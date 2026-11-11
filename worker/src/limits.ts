@@ -17,6 +17,12 @@ export const validPhone = (phone: string) => {
 	return /^\s*\+?[\d\s().-]+$/.test(phone) && digits >= 10 && digits <= 15;
 };
 
+// Also loose: it catches typos and junk, not every invalid address. It asks for a dot in the domain,
+// which a browser's own type="email" check doesn't ("jane@localhost" passes that), so the form's
+// script checks with this as well and intake.ts rejects what fails. check-techs holds the techs'
+// addresses in TECHS to the same rule.
+export const validEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 // A same-day fee in words: "$10", or a range like "$10–$20" when it isn't known yet which service
 // (and so which device) it's for. The site quotes it on the form, the steps and llms.txt (through
 // src/pricing.ts) and the worker's emails and tech pages quote it back (sameDayFee in intake.ts),

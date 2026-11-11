@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { sendMail } from "../src/fastmail.ts";
 import { accessRole, accessToken, listEvents } from "../src/google.ts";
-import { EMAIL } from "../src/intake.ts";
+import { validEmail } from "../src/limits.ts";
 import { openSlots, slotOptions } from "../src/slots.ts";
 import { parseTechs, type Tech } from "../src/techs.ts";
 import { wranglerVars } from "./wrangler-vars.ts";
@@ -59,7 +59,7 @@ function checkList(techs: Tech[]) {
 		const { email } = tech;
 		if (/calendar\.google\.com$/i.test(email)) {
 			fail(`${tech.name}: requests would go to the calendar ID ${email}, which can't get mail; add an "email"`);
-		} else if (!EMAIL.test(email)) {
+		} else if (!validEmail(email)) {
 			fail(`${tech.name}: "${email}" doesn't look like an email address`);
 		}
 	}

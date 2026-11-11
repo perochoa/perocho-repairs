@@ -1,5 +1,5 @@
 // The intake form: parsing, validation and the summary every email and event about it shows.
-import { feeText, MAX_QUANTITY, validPhone } from "./limits.ts";
+import { feeText, MAX_QUANTITY, validEmail, validPhone } from "./limits.ts";
 import { zonedFormat } from "./slots.ts";
 
 export interface Intake {
@@ -23,9 +23,6 @@ export interface Intake {
 }
 
 export type Parsed = { ok: true; intake: Intake } | { ok: false; spam: boolean };
-
-// Loose on purpose: catches typos and junk, not every invalid address.
-export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // For a tel: link: the digits, and the + if they gave one.
 export const dialable = (phone: string) => (phone.trim().startsWith("+") ? "+" : "") + phone.replace(/\D/g, "");
@@ -72,7 +69,7 @@ export function parseIntake(form: FormData, sameDayFees: Record<string, number>)
 		fields.name !== "" &&
 		fields.device !== "" &&
 		fields.problem !== "" &&
-		EMAIL.test(fields.email) &&
+		validEmail(fields.email) &&
 		validPhone(fields.phone) &&
 		!Number.isNaN(slot);
 
