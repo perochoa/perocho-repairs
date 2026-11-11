@@ -154,7 +154,8 @@ Merging to `main` deploys the worker from CI when anything under `worker/` chang
 worker, and only then the site, so a site change that needs a new worker response never goes out
 first. If the worker job fails, the site doesn't deploy either. When nothing under `worker/`
 changed, the site deploys on its own. Running the workflow by hand (Actions > Deploy to GitHub
-Pages > Run workflow) always deploys the worker, then the site.
+Pages > Run workflow) from `main` always deploys the worker, then the site; from any other branch
+it deploys nothing.
 
 `npx wrangler deploy` from this folder still works for a hotfix; the next merge that touches
 `worker/` deploys `main` over it, so merge the fix too. Secrets aren't part of a deploy: set
