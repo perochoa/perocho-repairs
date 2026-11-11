@@ -850,6 +850,30 @@ test("nothing is confirmed until the booking is on the calendar", async () => {
 	assert.match(to("jane@example.com")[0].subject, /^Your repair is confirmed/);
 });
 
+test("a failed approve leaves a tech who had declined as declined", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const [richard, sam] = [linkFor("richard@example.com"), linkFor("sam@example.com")];
+	await press(sam, "decline");
+	mails = [];
+	// Sam's hold went with the decline, so the booking would be a new event.
+	const restore = failing("POST");
+	const original = console.error;
+	console.error = () => {};
+	const response = await press(sam, "confirm");
+	console.error = original;
+	restore();
+
+	assert.equal(response.status, 500);
+	assert.equal(status(), "pending");
+	assert.match(await (await offerPage(sam)).text(), /You declined this request/);
+
+	// Sam still counts as out, so Richard declining settles it and the customer hears now.
+	await press(richard, "decline");
+	assert.equal(status(), "declined");
+	assert.match(to("jane@example.com")[0].subject, /^We can't take your repair request/);
+});
+
 // The hourly job.
 
 const tick = () => worker.scheduled({} as ScheduledController, env as unknown as Env);
