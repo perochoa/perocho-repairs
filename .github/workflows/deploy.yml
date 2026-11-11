@@ -6,10 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+# The default for every job; only the deploy job adds what publishing to Pages needs.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -40,7 +39,9 @@ jobs:
             worker:
               - 'worker/**'
 
-  # Same checks as CI, run before anything deploys. Skipped along with the worker deploy.
+  # The worker checks from CI, run again before the worker deploys. Skipped along with the worker
+  # deploy. The site's check and test aren't repeated here: the ruleset on main requires CI's build
+  # job on an up-to-date branch before a merge, and the build job below fails on a broken build.
   worker-check:
     needs: changes
     if: needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch'
@@ -92,6 +93,9 @@ jobs:
     needs: worker
     if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
+    # The cache and the Pages artifact go through the runner's own token, not GITHUB_TOKEN.
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -110,6 +114,11 @@ jobs:
     needs: build
     if: ${{ !failure() && !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
+    # Only this job publishes: pages to create the deployment, id-token for the OIDC token Pages
+    # checks the run against. It has no checkout, so it doesn't keep contents.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
