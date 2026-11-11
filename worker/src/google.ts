@@ -31,7 +31,14 @@ export async function accessToken(serviceAccountJson: string): Promise<string> {
 	// Unset in local dev when .dev.vars is missing or doesn't parse.
 	if (!serviceAccountJson) throw new Error("GOOGLE_SERVICE_ACCOUNT is not set");
 	if (cached?.account === serviceAccountJson && Date.now() < cached.exp - 300_000) return cached.token;
-	const account: ServiceAccount = JSON.parse(serviceAccountJson);
+	// JSON.parse's error quotes the start of its input, which for a key pasted without its JSON
+	// wrapper is the private key itself, and the error ends up in the logs. Name the secret instead.
+	let account: ServiceAccount;
+	try {
+		account = JSON.parse(serviceAccountJson);
+	} catch {
+		throw new Error("GOOGLE_SERVICE_ACCOUNT is not valid JSON");
+	}
 	const pem = account.private_key.replace(/-----[^-]+-----|\s/g, "");
 	const key = await crypto.subtle.importKey(
 		"pkcs8",

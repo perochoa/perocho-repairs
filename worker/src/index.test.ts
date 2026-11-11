@@ -311,6 +311,23 @@ for (const [label, TECHS] of [
 	});
 }
 
+test("never echoes a GOOGLE_SERVICE_ACCOUNT that isn't JSON", async () => {
+	// A bare private key, as if pasted without its JSON wrapper. JSON.parse's own error would quote it.
+	const GOOGLE_SERVICE_ACCOUNT = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC";
+	const logged: unknown[] = [];
+	const original = console.error;
+	console.error = (...args) => logged.push(...args);
+	const response = await slotsFrom("https://repairs.perocho.com", { GOOGLE_SERVICE_ACCOUNT });
+	const submitted = await submit({}, {}, { GOOGLE_SERVICE_ACCOUNT });
+	console.error = original;
+
+	assert.equal(response.status, 500);
+	assert.equal(submitted.headers.get("Location"), "https://repairs.perocho.com/request/failed/");
+	assert.ok(logged.some((e) => (e as Error).message === "GOOGLE_SERVICE_ACCOUNT is not valid JSON"));
+	const seen = [await response.text(), ...logged.map((e) => `${String(e)} ${(e as Error)?.stack ?? ""}`)].join("\n");
+	assert.ok(!seen.includes("MIIE"), seen);
+});
+
 const getSlots = () => worker.fetch(new Request("https://intake.test/slots"), env);
 const to = (address: string) => mails.filter((mail) => mail.to[0].email === address);
 const text = (mail: any) => mail.bodyValues.body.value as string;
