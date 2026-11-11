@@ -8,8 +8,12 @@ permissions:
   contents: read
 
 jobs:
+  # Set here because the jobs that call this workflow can't set a timeout themselves. In deploy.yml
+  # this runs inside the queued deploy, so a hung step would otherwise hold later deploys for the
+  # default six hours.
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: worker

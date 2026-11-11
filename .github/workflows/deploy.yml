@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+# Deploys queue behind each other instead of cancelling, so a half-finished one is never cut off.
+# That makes a hung step expensive: without the timeouts below it would hold every later deploy
+# for the default six hours. The limits are several times what each job should need.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -23,6 +26,7 @@ jobs:
   # (workflow_dispatch) from main the output stays empty and the worker job deploys anyway.
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
@@ -53,6 +57,7 @@ jobs:
       (needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
+    # A job that calls a workflow can't set a timeout; worker-check.yml sets its own.
     uses: ./.github/workflows/worker-check.yml
 
   # Deploys the worker first when worker/** changed, and on every manual run from main, so the site
@@ -63,6 +68,7 @@ jobs:
       github.ref == 'refs/heads/main' &&
       (needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     defaults:
@@ -103,6 +109,7 @@ jobs:
     needs: worker
     if: ${{ !failure() && !cancelled() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # The cache and the Pages artifact go through the runner's own token, not GITHUB_TOKEN.
     permissions:
       contents: read
@@ -125,6 +132,8 @@ jobs:
     needs: build
     if: ${{ !failure() && !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
+    # deploy-pages gives up on its own after ten minutes; this only catches it hanging past that.
+    timeout-minutes: 15
     # Only this job publishes: pages to create the deployment, id-token for the OIDC token Pages
     # checks the run against. It has no checkout, so it doesn't keep contents.
     permissions:
