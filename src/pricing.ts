@@ -2,6 +2,9 @@
 // fields it reads rather than CollectionEntry, so it has no astro:content import and `node --test`
 // can run pricing.test.ts on it without Astro. A services collection entry fits this shape as is.
 
+// With its .ts extension, which Node needs to run the tests and Astro's tsconfig allows.
+import { feeText } from "../worker/src/limits.ts";
+
 export interface PricedService {
 	id: string;
 	data: {
@@ -48,10 +51,10 @@ export function priceText(service: PricedService, services: PricedService[]) {
 	return [base, ...p.deals.map(({ when, price }) => `${price} ${when}`)].join(", or ");
 }
 
-// A same-day fee as the form, the steps and llms.txt quote it: "$10", or a range like "$10–$20"
-// when it isn't known yet which service (and so which device) it's for. The worker words its
-// emails the same way (sameDayFee in worker/src/intake.ts).
-export const feeText = (from: number, to = from) => (from === to ? `$${from}` : `$${from}–$${to}`);
+// A same-day fee as the form, the steps and llms.txt quote it. The wording lives with the worker,
+// whose emails quote the fee back (sameDayFee in worker/src/intake.ts); passed on from here so the
+// pages get all their price wording from one module.
+export { feeText };
 
 // Every service's same-day fee, lowest to highest: what "Something else, or not sure" is quoted.
 export function sameDayRange(services: PricedService[]) {
