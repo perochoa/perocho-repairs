@@ -173,6 +173,8 @@ const unsureFee = sameDayRange(services);
 </BaseLayout>
 
 <script>
+	import { validPhone } from "../../../worker/src/limits";
+
 	const form = document.querySelector<HTMLFormElement>("form[data-request]");
 
 	if (form) {
@@ -202,12 +204,11 @@ const unsureFee = sameDayRange(services);
 			if (hadFocus) noSlots.focus();
 		});
 
-		// Loose like the worker's check: separators and a leading + are fine, as long as there are 10
-		// to 15 digits.
+		// The worker's own check, so the form can't pass a number the worker then turns down. An empty
+		// field is left to `required`, which has its own message.
 		const phone = form.querySelector<HTMLInputElement>("[name=phone]")!;
 		phone.addEventListener("input", () => {
-			const digits = phone.value.replace(/\D/g, "").length;
-			const valid = phone.value === "" || (/^\s*\+?[\d\s().-]+$/.test(phone.value) && digits >= 10 && digits <= 15);
+			const valid = phone.value === "" || validPhone(phone.value);
 			phone.setCustomValidity(valid ? "" : "Enter your phone number with its area code, like 416-555-0123.");
 		});
 
