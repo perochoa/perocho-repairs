@@ -31,7 +31,14 @@ export async function accessToken(serviceAccountJson: string): Promise<string> {
 	// Unset in local dev when .dev.vars is missing or doesn't parse.
 	if (!serviceAccountJson) throw new Error("GOOGLE_SERVICE_ACCOUNT is not set");
 	if (cached?.account === serviceAccountJson && Date.now() < cached.exp - 300_000) return cached.token;
-	const account: ServiceAccount = JSON.parse(serviceAccountJson);
+	// JSON.parse's error quotes the start of its input, which for a key pasted without its JSON
+	// wrapper is the private key itself, and the error ends up in the logs. Name the secret instead.
+	let account: ServiceAccount;
+	try {
+		account = JSON.parse(serviceAccountJson);
+	} catch {
+		throw new Error("GOOGLE_SERVICE_ACCOUNT is not valid JSON");
+	}
 	const pem = account.private_key.replace(/-----[^-]+-----|\s/g, "");
 	const key = await crypto.subtle.importKey(
 		"pkcs8",
@@ -105,13 +112,16 @@ export async function listEvents(
 		timeMax: new Date(to).toISOString(),
 		singleEvents: "true",
 		maxResults: "2500",
-		fields: "items(summary,transparency,start,end,attendees(self,responseStatus))",
+		fields: "nextPageToken,items(summary,transparency,start,end,attendees(self,responseStatus))",
 	});
 	const response = await fetch(`${API}/${encodeURIComponent(calendarId)}/events?${query}`, {
 		headers: { Authorization: `Bearer ${token}` },
 	});
 	if (!response.ok) throw new Error(`google events: ${response.status} ${await response.text()}`);
-	const { items = [] } = (await response.json()) as { items?: GoogleEvent[] };
+	const { items = [], nextPageToken } = (await response.json()) as { items?: GoogleEvent[]; nextPageToken?: string };
+	// More events than one page holds. The missing ones could be busy times, so offering what's left
+	// could book a tech when they're not free; the caller treats the throw as no times from them.
+	if (nextPageToken) throw new Error("google events: more than one page of events, so some are missing");
 
 	return items.map((item) => ({
 		start: Date.parse(item.start.dateTime ?? item.start.date ?? ""),

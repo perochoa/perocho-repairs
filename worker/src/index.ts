@@ -28,14 +28,15 @@ import { parseTechs, type Tech } from "./techs.ts";
 // span, so a narrow one is cheap.
 async function findSlots(env: Env, token: string, techs: Tech[], from: number, to: number) {
 	const options = slotOptions(env, Date.now(), to);
-	// A calendar that can't be read (unshared, or a wrong calendarId in TECHS) costs that tech their
-	// times, not everyone's. The log names the tech; only when no calendar can be read is it an error.
+	// A calendar that can't be read (unshared, a wrong calendarId in TECHS, or too many events to
+	// read in one page) costs that tech their times, not everyone's. The log names the tech and
+	// carries Google's reason, which says which; only when no calendar can be read is it an error.
 	const results = await Promise.allSettled(
 		techs.map((tech) => listEvents(token, tech.calendarId, Math.max(options.now, from), to)),
 	);
 	const events = results.map((result, i) => {
 		if (result.status === "fulfilled") return result.value;
-		console.error(`can't read ${techs[i].name}'s calendar; check their calendarId in TECHS and that it's shared`, result.reason);
+		console.error(`can't read ${techs[i].name}'s calendar; their times aren't offered. A 404 means check their calendarId in TECHS and that it's shared`, result.reason);
 		return [];
 	});
 	if (results.every((result) => result.status === "rejected")) throw new Error("no tech's calendar could be read");
