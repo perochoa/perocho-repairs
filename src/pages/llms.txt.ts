@@ -19,13 +19,13 @@ export const GET: APIRoute = async ({ site: origin }) => {
 		"",
 		"## Services and prices",
 		"",
-		...services.flatMap(({ data, body }) => [
-			`### ${data.title}`,
+		...services.flatMap((service) => [
+			`### ${service.data.title}`,
 			"",
 			// "Message us for a quote" has no dollars to name.
-			`Price: ${priceText(data)}${data.price || data.perItem ? " (Canadian dollars)" : ""}.`,
+			`Price: ${priceText(service, services)}${service.data.price !== undefined ? " (Canadian dollars)" : ""}.`,
 			"",
-			(body ?? "").trim(),
+			(service.body ?? "").trim(),
 			"",
 		]),
 		...(repairs.length

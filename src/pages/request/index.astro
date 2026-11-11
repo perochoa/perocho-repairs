@@ -84,11 +84,11 @@ const services = await getServices();
 								     until then, so a hidden one neither blocks the submit nor rides along with it. -->
 								{
 									services
-										.filter((service) => service.data.perItem)
-										.map(({ id, data }) => (
+										.filter((service) => service.data.per)
+										.map((service) => (
 											<>
-												<label data-quantity={id} hidden>
-													How many {data.perItem!.item}s?
+												<label data-quantity={service.id} hidden>
+													How many {service.data.per}s?
 													<input
 														type="number"
 														name="quantity"
@@ -99,11 +99,11 @@ const services = await getServices();
 														value="2"
 														required
 														disabled
-														aria-describedby={`quantity-hint-${id}`}
+														aria-describedby={`quantity-hint-${service.id}`}
 													/>
 												</label>
-												<p class="hint" id={`quantity-hint-${id}`} data-quantity={id} hidden>
-													{priceText(data)}. A controller has two.
+												<p class="hint" id={`quantity-hint-${service.id}`} data-quantity={service.id} hidden>
+													{priceText(service, services)}. A controller has two.
 												</p>
 											</>
 										))
