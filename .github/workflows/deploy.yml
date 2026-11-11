@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # No step pushes, so the token needn't be kept in .git/config.
+        with:
+          persist-credentials: false
 
       - name: Check for worker changes
         id: filter
@@ -59,6 +62,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # wrangler-action uses the wrangler version pinned in worker/package-lock.json once installed.
       - name: Set up Node
@@ -90,6 +95,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # withastro/action has no node-version-file input, so this can't read .nvmrc; keep them in step.
       - name: Build with Astro
