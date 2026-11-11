@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type CalendarEvent, horizon, isAvailable, monthWindow, openSlots } from "./slots.ts";
+import { type CalendarEvent, horizon, isAvailable, monthWindow, openSlots, rowEnd } from "./slots.ts";
 
 // Monday 2 November 2026, Toronto (EST, -05:00).
 const at = (time: string, date = "2026-11-02") => Date.parse(`${date}T${time}:00-05:00`);
@@ -212,4 +212,30 @@ test("only months in the booking window have a span", () => {
 		assert.equal(monthWindow(bad, now, 12, zone), null, bad);
 	}
 	assert.equal(horizon(now, 12, zone), Date.parse("2027-11-01T00:00:00-04:00"));
+});
+
+// The form's last day in the row is the day it is DAYS_AHEAD days from now, and it shows that day
+// from the row alone, so the row runs to the end of it whatever the time of day.
+test("the row of days ends at the end of its last day in the worker's zone", () => {
+	const zone = "America/Toronto";
+	const end = Date.parse("2026-12-04T00:00:00-05:00");
+	// 31 days from 2 November is 3 December, from its first minute to its last.
+	assert.equal(rowEnd(at("00:00"), 31, zone), end);
+	assert.equal(rowEnd(at("10:00"), 31, zone), end);
+	assert.equal(rowEnd(at("23:59"), 31, zone), end);
+	// Over a clock change the 31 days are 24 hours each, so from 10 a.m. on 15 October (EDT) they
+	// reach 9 a.m. on 15 November (EST), and the row ends with that day, at EST's midnight.
+	assert.equal(rowEnd(Date.parse("2026-10-15T10:00:00-04:00"), 31, zone), Date.parse("2026-11-16T00:00:00-05:00"));
+	// The last day can be the one the clocks go forward on, 23 hours long.
+	assert.equal(rowEnd(Date.parse("2027-02-11T10:00:00-05:00"), 31, zone), Date.parse("2027-03-14T00:00:00-05:00") + 23 * 3_600_000);
+	// Into the next month and year.
+	assert.equal(rowEnd(Date.parse("2026-12-31T12:00:00-05:00"), 1, zone), Date.parse("2027-01-02T00:00:00-05:00"));
+});
+
+test("a time late on the row's last day is in the row", () => {
+	// At 10 a.m., 6 p.m. a day on is more than 24 hours off, but still tomorrow.
+	const from = at("10:00");
+	const late = { ...available("18:00", "19:00"), start: at("18:00", "2026-11-03"), end: at("19:00", "2026-11-03") };
+	assert.equal(starts([[late]], { now: from, to: from + day }).length, 0);
+	assert.equal(starts([[late]], { now: from, to: rowEnd(from, 1, "America/Toronto") }).length, 1);
 });
