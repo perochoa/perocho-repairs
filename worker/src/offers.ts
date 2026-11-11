@@ -76,7 +76,7 @@ async function forgetHold(env: Env, token: string, offer: OfferRow) {
 // The same for a tech who just declined, the other way round: forgotten first, then deleted. They
 // can approve it in another tab at any moment, and deleting first could delete the hold just after
 // that approve turned it into the booking. So the hold is taken off the offer in one statement,
-// only while they're still declined, and `confirm` reads the hold in the statement that undoes the
+// only while they're still declined, and `confirm` reads the hold in the batch that undoes the
 // decline: whichever runs first, the other sees it, and the event deleted here is never one an
 // approve books. If the delete throws, the id goes back so the hourly job tries again. Should
 // that fail too, the hold stays on their calendar with no record of it, for them to delete by
@@ -113,10 +113,15 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 		.run();
 	if (won.meta.changes !== 1) return;
 	// The hold as it is now, not as loaded: a decline of theirs in another tab may have forgotten
-	// it since and be about to delete it (see `dropHold`), and it mustn't be booked then.
-	const mine = await env.DB.prepare("UPDATE offers SET declined = 0 WHERE token = ? RETURNING hold_id")
-		.bind(offer.token)
-		.first<Pick<OfferRow, "hold_id">>();
+	// it since and be about to delete it (see `dropHold`), and it mustn't be booked then. And whether
+	// they were declined just now, not as loaded, for the same reason: that decline is what a failed
+	// booking has to put back. RETURNING only gives the row as it is after the update, so the read
+	// is a statement of its own, and the batch is one transaction: no decline gets between the two.
+	const [before] = await env.DB.batch<Pick<OfferRow, "hold_id" | "declined">>([
+		env.DB.prepare("SELECT hold_id, declined FROM offers WHERE token = ?").bind(offer.token),
+		env.DB.prepare("UPDATE offers SET declined = 0 WHERE token = ?").bind(offer.token),
+	]);
+	const mine = before.results[0];
 	const holdId = mine?.hold_id ?? null;
 
 	const time = timeOf(env, request);
@@ -141,11 +146,12 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 		// Not on their calendar, so nobody has it yet: open it again before anyone is told, and the
 		// error page tells the tech to try again. It also says nothing changed, so a tech who had
 		// declined goes back to declined: left counted as open, the last other tech declining would
-		// never settle the request, and the customer would hear nothing until it expired.
+		// never settle the request, and the customer would hear nothing until it expired. Nothing
+		// has declined for them since the read above, since `decline` only works on an open request.
 		await env.DB.batch([
 			env.DB.prepare("UPDATE requests SET status = 'pending', confirmed_by = NULL WHERE id = ? AND confirmed_by = ?")
 				.bind(request.id, offer.token),
-			env.DB.prepare("UPDATE offers SET declined = ? WHERE token = ?").bind(offer.declined, offer.token),
+			env.DB.prepare("UPDATE offers SET declined = ? WHERE token = ?").bind(mine?.declined ?? 0, offer.token),
 		]);
 		throw error;
 	}

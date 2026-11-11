@@ -58,20 +58,33 @@ function fakeD1() {
 	const sqlite = new DatabaseSync(":memory:");
 	const migrations = `${import.meta.dirname}/../migrations`;
 	for (const file of readdirSync(migrations).sort()) sqlite.exec(readFileSync(`${migrations}/${file}`, "utf8"));
+	// As D1's run does, a statement that reads gives its rows back too: it's the only way to read
+	// in a batch. One with RETURNING changed a row for each it gives back.
+	const execute = (sql: string, params: any[]) => {
+		const prepared = sqlite.prepare(sql);
+		if (prepared.columns().length === 0) {
+			return { success: true, meta: { changes: Number(prepared.run(...params).changes) }, results: [] };
+		}
+		const results = prepared.all(...params);
+		return { success: true, meta: { changes: /^\s*SELECT\b/i.test(sql) ? 0 : results.length }, results };
+	};
 	const statement = (sql: string, params: any[] = []) => ({
 		bind: (...values: any[]) => statement(sql, values),
-		run: async () => ({ success: true, meta: { changes: Number(sqlite.prepare(sql).run(...params).changes) } }),
+		execute: () => execute(sql, params),
+		run: async () => execute(sql, params),
 		first: async () => sqlite.prepare(sql).get(...params) ?? null,
 		all: async () => ({ success: true, results: sqlite.prepare(sql).all(...params) }),
 	});
 	return {
 		sqlite,
 		prepare: (sql: string) => statement(sql),
+		// Without an await between its statements, as D1 runs a batch: nothing a test has waiting in
+		// another tab gets in between them.
 		batch: async (statements: ReturnType<typeof statement>[]) => {
 			sqlite.exec("BEGIN");
 			try {
 				const results = [];
-				for (const s of statements) results.push(await s.run());
+				for (const s of statements) results.push(s.execute());
 				sqlite.exec("COMMIT");
 				return results;
 			} catch (error) {
@@ -885,6 +898,50 @@ test("a failed approve leaves a tech who had declined as declined", async () => 
 	const response = await press(sam, "confirm");
 	console.error = original;
 	restore();
+
+	assert.equal(response.status, 500);
+	assert.equal(status(), "pending");
+	assert.match(await (await offerPage(sam)).text(), /You declined this request/);
+
+	// Sam still counts as out, so Richard declining settles it and the customer hears now.
+	await press(richard, "decline");
+	assert.equal(status(), "declined");
+	assert.match(to("jane@example.com")[0].subject, /^We can't take your repair request/);
+});
+
+test("a failed approve leaves a tech who declined in another tab since as declined", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const [richard, sam] = [linkFor("richard@example.com"), linkFor("sam@example.com")];
+
+	// The approve loads Sam's offer while he's still in, then waits while his decline goes through.
+	let resume!: () => void;
+	const paused = new Promise<void>((resolve) => (resume = resolve));
+	const prepare = db.prepare;
+	db.prepare = (sql: string) => {
+		const statement = prepare(sql);
+		if (!sql.startsWith("UPDATE requests SET status = 'confirmed'")) return statement;
+		return {
+			...statement,
+			bind: (...values: any[]) => {
+				const bound = statement.bind(...values);
+				return { ...bound, run: async () => (await paused, bound.run()) };
+			},
+		};
+	};
+	const confirming = press(sam, "confirm");
+	await press(sam, "decline");
+	assert.match(await (await offerPage(sam)).text(), /You declined this request/);
+	mails = [];
+	// Sam's hold went with the decline, so the booking would be a new event.
+	const restore = failing("POST");
+	const original = console.error;
+	console.error = () => {};
+	resume();
+	const response = await confirming;
+	console.error = original;
+	restore();
+	db.prepare = prepare;
 
 	assert.equal(response.status, 500);
 	assert.equal(status(), "pending");
