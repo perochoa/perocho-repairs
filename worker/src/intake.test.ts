@@ -89,7 +89,7 @@ test("collapses whitespace in single-line fields only", () => {
 });
 
 test("needs an email that looks like an address", () => {
-	for (const email of ["", "jane@", "@example.com", "jane doe@example.com"]) {
+	for (const email of ["", "jane@", "@example.com", "jane doe@example.com", "jane@localhost"]) {
 		assert.equal(parseIntake(form({ email }), fees).ok, false, email);
 	}
 });

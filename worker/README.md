@@ -180,9 +180,9 @@ opens it (`GET /slots?month=YYYY-MM`). The same-day fees are `SAME_DAY_FEES` the
 service title, and `sameDay` in each `src/content/services/*.md`; keep them the same, including
 when a service is added or renamed (`npm test` fails if they differ). What the site and the
 worker must agree on has just one copy, in `src/limits.ts`, which the site imports: `MAX_QUANTITY`
-(the most items a request can be for), `validPhone` (the phone rule the form checks as they type
-and the worker checks again) and `feeText` (how a same-day fee is worded on the site and in the
-emails).
+(the most items a request can be for), `validPhone` and `validEmail` (the phone and email rules
+the form checks as they type and the worker checks again) and `feeText` (how a same-day fee is
+worded on the site and in the emails).
 
 To try the form from the site's dev server against `npx wrangler dev`, see
 [Running the request form locally](../README.md#running-the-request-form-locally).

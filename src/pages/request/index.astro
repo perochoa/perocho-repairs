@@ -173,7 +173,7 @@ const unsureFee = sameDayRange(services);
 </BaseLayout>
 
 <script>
-	import { validPhone } from "../../../worker/src/limits";
+	import { validEmail, validPhone } from "../../../worker/src/limits";
 
 	const form = document.querySelector<HTMLFormElement>("form[data-request]");
 
@@ -204,8 +204,14 @@ const unsureFee = sameDayRange(services);
 			if (hadFocus) noSlots.focus();
 		});
 
-		// The worker's own check, so the form can't pass a number the worker then turns down. An empty
-		// field is left to `required`, which has its own message.
+		// The worker's own checks, so the form can't pass an address or a number the worker then turns
+		// down. An empty field is left to `required`, which has its own message. The browser's check of
+		// an email field is looser than the worker's: it takes "jane@localhost", with no dot.
+		const email = form.querySelector<HTMLInputElement>("[name=email]")!;
+		email.addEventListener("input", () => {
+			const valid = email.value === "" || validEmail(email.value);
+			email.setCustomValidity(valid ? "" : "Enter your email address in full, like jane@example.com.");
+		});
 		const phone = form.querySelector<HTMLInputElement>("[name=phone]")!;
 		phone.addEventListener("input", () => {
 			const valid = phone.value === "" || validPhone(phone.value);
