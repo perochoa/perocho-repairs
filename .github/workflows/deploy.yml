@@ -14,9 +14,13 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# A manual run can be started from any branch or tag, and only the Pages environment refuses refs
+# other than main; nothing would stop the worker job from migrating the live database and deploying
+# that ref's worker. So every job that ships something, or leads to one that does, checks the ref
+# itself. A manual run from anywhere else only runs the change check and skips the rest.
 jobs:
   # Works out whether worker/** changed in this push. The filter only runs on push; on a manual run
-  # (workflow_dispatch) the output stays empty and the worker job deploys anyway.
+  # (workflow_dispatch) from main the output stays empty and the worker job deploys anyway.
   changes:
     runs-on: ubuntu-latest
     permissions:
@@ -44,16 +48,20 @@ jobs:
   # job on an up-to-date branch before a merge, and the build job below fails on a broken build.
   worker-check:
     needs: changes
-    if: needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
     uses: ./.github/workflows/worker-check.yml
 
-  # Deploys the worker first when worker/** changed, and on every manual run, so the site never
-  # ships ahead of a worker response it depends on. Otherwise the whole job is skipped.
+  # Deploys the worker first when worker/** changed, and on every manual run from main, so the site
+  # never ships ahead of a worker response it depends on. Otherwise the whole job is skipped.
   worker:
     needs: [changes, worker-check]
-    if: needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -89,9 +97,11 @@ jobs:
             deploy
 
   # Runs after the worker deployed or was skipped, never after it (or the change check) failed.
+  # The ref is checked here as well because a skipped worker job doesn't stop this one: without it
+  # a manual run from another branch would build that branch and offer it to Pages.
   build:
     needs: worker
-    if: ${{ !failure() && !cancelled() }}
+    if: ${{ !failure() && !cancelled() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     # The cache and the Pages artifact go through the runner's own token, not GITHUB_TOKEN.
     permissions:
@@ -109,7 +119,8 @@ jobs:
           node-version: 24
 
   # Needs its own condition: with the default success() check, a skipped worker job would skip
-  # this one too even though build succeeded, because it looks at every upstream job.
+  # this one too even though build succeeded, because it looks at every upstream job. Asking for
+  # build's success also keeps this off any ref but main, where build is skipped.
   deploy:
     needs: build
     if: ${{ !failure() && !cancelled() && needs.build.result == 'success' }}
