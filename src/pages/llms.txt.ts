@@ -47,7 +47,7 @@ export const GET: APIRoute = async ({ site: origin }) => {
 		...(site.intakeUrl
 			? [
 					`- [Request a repair](${link("/request/")}) and pick a drop-off time online. A tech confirms by email.`,
-					`- Need it today? Same-day service (${sameDayRange(services)}, by device) moves it to the front of the line, ready the day you drop it off.`,
+					`- Need it sooner? Same-day service (${sameDayRange(services)}, by device) moves it to the front of the line.`,
 				]
 			: ["- Message us on Messenger or by email for a quote and a drop-off time."]),
 		...(site.serviceArea ? [`- Where: ${site.serviceArea}`] : []),

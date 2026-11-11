@@ -9,7 +9,7 @@ when the customer brings the device in. When it'll be ready is up to the tech wh
 repair and the customer, by phone or email. A time and a phone number are required; without JS,
 or when there are no open times, the form points people to Messenger and email instead. A
 customer can ask for same-day service (paid in person like the rest), which puts their repair at
-the front of the queue to be ready the day they drop it off. The fee goes by the device, through
+the front of the queue. The fee goes by the device, through
 the service picked: +$10 for the controller stick fix, +$20 for the PS5 services, and "$10–$20,
 the tech will confirm" when they pick "Something else, or not sure". For a service priced per item (the TMR stick upgrade), the form also asks how
 many sticks, and the count shows as `Quantity` in the request's emails, events and queue.

@@ -272,7 +272,7 @@ export async function page(env: Env, token: string): Promise<Response> {
 
 	// Payment is in person, so the fee is only a reminder.
 	const rush = intake.rush
-		? `<p class="rush">SAME-DAY: +${sameDayFee(intake)}, paid in person. It goes to the front of the queue, to be ready the day it's dropped off.</p>\n`
+		? `<p class="rush">SAME-DAY: +${sameDayFee(intake)}, paid in person. It goes to the front of the queue.</p>\n`
 		: "";
 	// Techs call to talk through the price, so the number is one tap away on a phone.
 	const call = `<p class="call"><a href="tel:${escape(dialable(intake.phone))}">Call ${escape(intake.name)}: ${escape(intake.phone)}</a></p>\n`;

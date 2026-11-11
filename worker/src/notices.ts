@@ -26,7 +26,7 @@ export const toTech = (intake: Intake, time: string, tech: Offered): Message => 
 		"",
 		`Approve the drop-off or decline it: ${tech.link}`,
 		"The first tech to approve gets the drop-off, and the repair goes in the queue all the techs share, for any of you to pick up. Declining only takes you out of the drop-off; the others can still approve it.",
-		...(intake.rush ? ["It's same-day: once approved, it goes to the front of the queue, to be ready the day it's dropped off."] : []),
+		...(intake.rush ? ["It's same-day: once approved, it goes to the front of the queue."] : []),
 		...(tech.held ? ["It's on your calendar as a tentative hold until someone approves it."] : []),
 		"The time is when they drop it off. Call them to talk through the price and when it'll be ready, or reply to this email to reach them.",
 	].join("\n"),
@@ -66,7 +66,7 @@ const hi = (intake: Intake) => `Hi ${intake.name},`;
 // Payment is in person, so the fee is only a note.
 const sameDay = (intake: Intake) =>
 	intake.rush
-		? [`You asked for same-day service, so your repair goes to the front of the queue, to be ready the day you drop it off. That's +${sameDayFee(intake)}${intake.rushFrom ? " depending on the device, which the tech will confirm" : ""}, paid in person with the repair.`]
+		? [`You asked for same-day service, so your repair goes to the front of the queue. That's +${sameDayFee(intake)}${intake.rushFrom ? " depending on the device, which the tech will confirm" : ""}, paid in person with the repair.`]
 		: [];
 const yours = (intake: Intake, time: string) => ["", "Your request:", describe(intake, time)];
 

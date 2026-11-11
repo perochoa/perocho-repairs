@@ -764,7 +764,7 @@ test("same-day is marked everywhere the techs look, and priced for the customer"
 	assert.match(holds[0].body.description, /Same-day: yes, \+\$20/);
 	assert.match(to("sam@example.com")[0].subject, /^Repair request: SAME-DAY PS5 deep cleaning from Jane, /);
 	assert.match(to("repairs@perocho.com")[0].subject, /SAME-DAY/);
-	assert.match(text(to("jane@example.com")[0]), /ready the day you drop it off\. That's \+\$20, paid in person/);
+	assert.match(text(to("jane@example.com")[0]), /front of the queue\. That's \+\$20, paid in person/);
 	assert.doesNotMatch(to("jane@example.com")[0].subject, /SAME-DAY/);
 
 	const sam = linkFor("sam@example.com");
