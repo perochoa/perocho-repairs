@@ -7,6 +7,7 @@ price: 70
 bundle:
   with: hdmi-port
   price: 30
+sameDay: 20
 ---
 
 Loud fan or overheating? Dust builds up deep inside the PS5 where you can't reach it, and the

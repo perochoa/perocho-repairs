@@ -38,8 +38,14 @@
 		"LEAD_HOURS": 2,
 		"DAYS_AHEAD": 31,
 		"MONTHS_AHEAD": 12,
-		// Dollars added for a rush (front of the queue), paid in person. Keep rushFee in src/site.ts the same: src/config.test.ts fails if they differ.
-		"RUSH_FEE": 20,
+		// Dollars added for same-day service (front of the queue), paid in person, by the service picked, which says the device.
+		// Keyed by each service's title, as the form sends it; a request for anything else is quoted the range of these.
+		// Keep them the same as `sameDay` in src/content/services/: src/config.test.ts fails if they differ.
+		"SAME_DAY_FEES": {
+			"PS5 controller stick drift fix (TMR upgrade)": 10,
+			"PS5 deep cleaning": 20,
+			"PS5 HDMI port replacement": 20
+		},
 		// Days after its drop-off time that a settled request (declined, expired or marked done) and
 		// the customer's details in it are deleted, by the hourly job.
 		"RETENTION_DAYS": 180,

@@ -6,7 +6,7 @@
 
 import { type Mail, sendMail } from "./fastmail.ts";
 import { accessToken, bookEvent, createEvent, deleteEvent } from "./google.ts";
-import { describe, dialable, formatTime, type Intake, stop, what } from "./intake.ts";
+import { describe, dialable, formatTime, type Intake, sameDayFee, stop, what } from "./intake.ts";
 import * as notices from "./notices.ts";
 import { escape, html } from "./pages.ts";
 import { parseTechs } from "./techs.ts";
@@ -256,7 +256,7 @@ function view({ offer, request, offers, intake }: Loaded, time: string): [string
 	if (passed(request)) return ["This time has passed", "Nobody approved the drop-off in time, so it can't be approved now.", ""];
 	if (offer.declined) return ["You declined this request", "It's still open for the others, so you can approve the drop-off after all.", approve];
 	return [
-		intake.rush ? "New rush repair request" : "New repair request",
+		intake.rush ? "New same-day repair request" : "New repair request",
 		`Drop-off ${stop(time)} The first tech to approve gets the drop-off, and the repair goes in the queue for any tech to pick up.`,
 		approve + '<button name="action" value="decline">Decline</button>',
 	];
@@ -272,7 +272,7 @@ export async function page(env: Env, token: string): Promise<Response> {
 
 	// Payment is in person, so the fee is only a reminder.
 	const rush = intake.rush
-		? `<p class="rush">RUSH: +$${intake.rush}, paid in person. It goes to the front of the queue.</p>\n`
+		? `<p class="rush">SAME-DAY: +${sameDayFee(intake)}, paid in person. It goes to the front of the queue, to be ready the day it's dropped off.</p>\n`
 		: "";
 	// Techs call to talk through the price, so the number is one tap away on a phone.
 	const call = `<p class="call"><a href="tel:${escape(dialable(intake.phone))}">Call ${escape(intake.name)}: ${escape(intake.phone)}</a></p>\n`;
@@ -287,8 +287,8 @@ ${buttons && `<form method="post">${buttons}</form>`}
 }
 
 // One queue for every tech: each approved repair nobody has marked done, whoever approved it, in
-// the order to work them: rush first, then the earliest drop-off, then the first filed. `rush > 0`,
-// not `rush`: a rush is a rush whatever fee it was quoted at. Each has who approved it, and the
+// the order to work them: same-day first (the `rush` column), then the earliest drop-off, then the
+// first filed. `rush > 0`, not `rush`: same-day is same-day whatever fee it was quoted at. Each has who approved it, and the
 // viewing tech's own offer for it, so what they press there is recorded as them. A tech is their
 // calendar, as everywhere else a request meets one; one added to TECHS since it came in has none.
 const QUEUE_SQL = `SELECT requests.*,
@@ -314,7 +314,7 @@ export async function queue(env: Env, token: string): Promise<Response> {
 		const quantity = intake.quantity ? `Quantity ${intake.quantity}` : "";
 		const details = [`Drop-off ${time}`, intake.service && intake.device, quantity, intake.name].filter((detail) => detail);
 		const call = ` · <a href="tel:${escape(dialable(intake.phone))}">${escape(intake.phone)}</a>`;
-		const title = `${request.rush ? "RUSH " : ""}${escape(what(intake))}`;
+		const title = `${request.rush ? "SAME-DAY " : ""}${escape(what(intake))}`;
 		const approver = request.mine === request.confirmed_by ? "you" : escape(request.approver ?? "another tech");
 		// Without an offer of their own there's no page to press anything on.
 		const [heading, unlinked] = request.mine
@@ -330,7 +330,7 @@ Approved by ${approver}${unlinked}</span></li>`;
 		`<h1>Repair queue</h1>
 ${
 	items.length > 0
-		? `<p class="state">${count} approved and not marked done, for any tech to pick up: rush first, then by drop-off time. Whoever does one marks it done on its page.</p>
+		? `<p class="state">${count} approved and not marked done, for any tech to pick up: same-day first, then by drop-off time. Whoever does one marks it done on its page.</p>
 <ol class="queue">
 ${items.join("\n")}
 </ol>`

@@ -82,7 +82,8 @@ async function slots(env: Env, month: string | null, origin: string | null, ip: 
 // "closed": the picked time isn't open any more (now inside the lead time, or a tech changed their
 // blocks or added an event); other requests never close a time, since drop-offs share them.
 async function request(env: Env, form: FormData, ip: string | null, origin: string): Promise<Outcome> {
-	const parsed = parseIntake(form, env.RUSH_FEE);
+	// wrangler types only knows SAME_DAY_FEES as an object; config.test.ts checks it's numbers.
+	const parsed = parseIntake(form, env.SAME_DAY_FEES as Record<string, number>);
 	if (!parsed.ok) return parsed.spam ? "sent" : "failed";
 	const { intake } = parsed;
 

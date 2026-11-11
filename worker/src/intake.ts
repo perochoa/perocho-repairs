@@ -10,9 +10,12 @@ export interface Intake {
 	problem: string;
 	slot: number; // epoch ms of the drop-off time they picked
 	notes: string;
-	// The rush fee in dollars they agreed to, 0 for none. Kept as a fee, not a flag, so a later
-	// change to RUSH_FEE doesn't change what earlier customers were quoted.
+	// The same-day fee in dollars they agreed to, 0 for none (named for when it was a "rush"; the
+	// stored forms and the requests table still call it that). Kept as a fee, not a flag, so a
+	// later change to SAME_DAY_FEES doesn't change what earlier customers were quoted. Asked for
+	// without a known service, it's the top of the range they were quoted, and rushFrom the bottom.
 	rush: number;
+	rushFrom?: number;
 	// How many of a per-item service's items (sticks, for the TMR upgrade). Only set when the form
 	// asks, so requests for other services, and ones filed before it asked, have none.
 	quantity?: number;
@@ -35,7 +38,16 @@ export const MAX_QUANTITY = 20;
 // For a tel: link: the digits, and the + if they gave one.
 export const dialable = (phone: string) => (phone.trim().startsWith("+") ? "+" : "") + phone.replace(/\D/g, "");
 
-export function parseIntake(form: FormData, rushFee: number): Parsed {
+// The same-day fee for a service, by its title as the form sends it; for any other (or none), the
+// range of them all, as the form quotes it.
+function sameDayQuote(fees: Record<string, number>, service: string) {
+	if (Object.hasOwn(fees, service)) return { rush: fees[service] };
+	const all = Object.values(fees);
+	const [from, to] = [Math.min(...all), Math.max(...all)];
+	return from === to ? { rush: to } : { rush: to, rushFrom: from };
+}
+
+export function parseIntake(form: FormData, sameDayFees: Record<string, number>): Parsed {
 	// Single-line unless told otherwise: CR/LF would leak into subjects and summaries.
 	const field = (name: string, max: number, multiline = false) => {
 		const value = form.get(name);
@@ -73,9 +85,9 @@ export function parseIntake(form: FormData, rushFee: number): Parsed {
 		!Number.isNaN(slot);
 
 	if (!valid) return { ok: false, spam: false };
-	const rush = form.get("rush") === "1" ? rushFee : 0;
+	const sameDay = form.get("rush") === "1" ? sameDayQuote(sameDayFees, fields.service) : { rush: 0 };
 	// Left off when there's none, so the stored form reads the same as before the form asked.
-	return { ok: true, intake: { ...fields, slot, rush, ...(quantity && { quantity }) } };
+	return { ok: true, intake: { ...fields, slot, ...sameDay, ...(quantity && { quantity }) } };
 }
 
 const formatter = zonedFormat("en-CA", {
@@ -100,7 +112,7 @@ export function describe(intake: Intake, time: string): string {
 		["Quantity", intake.quantity ? String(intake.quantity) : ""],
 		["Device", intake.device],
 		["Drop-off time", time],
-		["Rush", intake.rush ? `yes, +$${intake.rush} (paid in person)` : ""],
+		["Same-day", intake.rush ? `yes, +${sameDayFee(intake)} (paid in person)` : ""],
 	]
 		.filter(([, value]) => value)
 		.map(([label, value]) => `${label}: ${value}`);
@@ -110,8 +122,13 @@ export function describe(intake: Intake, time: string): string {
 	return lines.join("\n");
 }
 
+// The same-day fee as quoted: "$10", or "$10–$20" when no service was picked. Worded like
+// feeText in src/services.ts.
+export const sameDayFee = ({ rush, rushFrom }: Intake) => (rushFrom ? `$${rushFrom}–$${rush}` : `$${rush}`);
+
 // What the request is for: the chosen service, else the device.
 export const what = (intake: Intake) => intake.service || intake.device;
 
-// Leads what the techs see about a request, so a rush stands out in a list of emails or events.
-export const rushed = (intake: Intake) => (intake.rush ? `RUSH ${what(intake)}` : what(intake));
+// Leads what the techs see about a request, so a same-day one stands out in a list of emails or
+// events.
+export const rushed = (intake: Intake) => (intake.rush ? `SAME-DAY ${what(intake)}` : what(intake));

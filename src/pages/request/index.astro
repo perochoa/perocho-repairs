@@ -3,10 +3,12 @@ import CharacterCount from "../../components/CharacterCount.astro";
 import SlotPicker from "../../components/SlotPicker.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { marketplace } from "../../reviews";
-import { getServices, priceText } from "../../services";
+import { feeText, getServices, priceText, sameDayRange } from "../../services";
 import { site } from "../../site";
 
 const services = await getServices();
+// The same-day fee goes by the device, so it follows the service picked; "not sure" gets the range.
+const unsureFee = sameDayRange(services);
 ---
 
 <BaseLayout title={`Request a repair · ${site.name}`} description={`Request a PS5 or controller repair from ${site.name} in ${site.city} and pick a drop-off time online.`}>
@@ -76,8 +78,14 @@ const services = await getServices();
 								<label>
 									Service
 									<select name="service">
-										{services.map((service) => <option data-id={service.id}>{service.data.title}</option>)}
-										<option value="">Something else, or not sure</option>
+										{
+											services.map((service) => (
+												<option data-id={service.id} data-fee={feeText(service.data.sameDay)}>
+													{service.data.title}
+												</option>
+											))
+										}
+										<option value="" data-fee={unsureFee}>Something else, or not sure</option>
 									</select>
 								</label>
 								<!-- One per per-item service, shown and sent only while it's the one picked. Disabled
@@ -119,8 +127,11 @@ const services = await getServices();
 								<label class="check rush">
 									<input type="checkbox" name="rush" value="1" aria-labelledby="rush-label" aria-describedby="rush-hint" />
 									<span class="rush-text">
-										<span id="rush-label">Rush it (+${site.rushFee})</span>
-										<span class="hint" id="rush-hint">Rush repairs go to the front of the queue. You pay for it in person, with the repair.</span>
+										<span id="rush-label">Same-day (+<span data-same-day-fee>{feeText(services[0].data.sameDay)}</span>)</span>
+										<span class="hint" id="rush-hint">
+											Same-day repairs go to the front of the queue, so it's ready the day you drop it off. You pay for
+											it in person, with the repair.
+										</span>
 									</span>
 								</label>
 							</fieldset>
@@ -216,6 +227,13 @@ const services = await getServices();
 		};
 		service.addEventListener("change", showQuantity);
 		showQuantity();
+
+		// The same-day fee is by device: the picked service's, or the range when it's not one of them.
+		// The worker charges the same by service, whatever this says.
+		const fee = form.querySelector<HTMLElement>("[data-same-day-fee]")!;
+		const showFee = () => (fee.textContent = service.selectedOptions[0]?.dataset.fee ?? "");
+		service.addEventListener("change", showFee);
+		showFee();
 
 		// The time picker has already stopped a submit without a time by now.
 		form.addEventListener("submit", (event) => {
@@ -442,7 +460,7 @@ const services = await getServices();
 			transform: translateY(0.75rem);
 		}
 	}
-	/* Rush is a choice card: the whole box is the target and lights up when picked. */
+	/* Same-day is a choice card: the whole box is the target and lights up when picked. */
 	.rush {
 		align-items: flex-start;
 		padding: 0.875rem 1rem;
