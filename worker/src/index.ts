@@ -26,7 +26,7 @@ import { parseTechs, type Tech } from "./techs.ts";
 
 // The open times from now (or `from`, if later) until `to`. The calendars are only read for that
 // span, so a narrow one is cheap.
-async function findSlots(env: Env, token: string, techs: Tech[], from: number, to: number) {
+async function findSlots(env: Env, token: string, techs: Tech[], from: number, to: number): Promise<Slot[]> {
 	const options = slotOptions(env, Date.now(), to);
 	// A calendar that can't be read (unshared, or a wrong calendarId in TECHS) costs that tech their
 	// times, not everyone's. The log names the tech; only when no calendar can be read is it an error.
@@ -39,7 +39,7 @@ async function findSlots(env: Env, token: string, techs: Tech[], from: number, t
 		return [];
 	});
 	if (results.every((result) => result.status === "rejected")) throw new Error("no tech's calendar could be read");
-	return { techs, slots: openSlots(events, options) };
+	return openSlots(events, options);
 }
 
 async function slots(env: Env, month: string | null, origin: string | null, ip: string | null): Promise<Response> {
@@ -56,7 +56,7 @@ async function slots(env: Env, month: string | null, origin: string | null, ip: 
 	if (!window) return new Response("No such month to book in", { status: 400 });
 	const allowed = [env.SITE_URL, ...env.DEV_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)];
 	const token = await accessToken(env.GOOGLE_SERVICE_ACCOUNT);
-	const { slots: open } = await findSlots(env, token, parseTechs(env.TECHS), window.from, window.to);
+	const open = await findSlots(env, token, parseTechs(env.TECHS), window.from, window.to);
 	return Response.json(
 		{
 			timeZone: env.TIME_ZONE,
@@ -144,7 +144,7 @@ async function file(env: Env, intake: Intake, origin: string): Promise<Outcome> 
 	// window has nothing to read, so it's closed.
 	const token = await accessToken(env.GOOGLE_SERVICE_ACCOUNT);
 	const end = Math.min(intake.slot + env.SLOT_MINUTES * 60_000, horizon(Date.now(), env.MONTHS_AHEAD, env.TIME_ZONE));
-	const slot = (await findSlots(env, token, techs, intake.slot, end)).slots.find((s) => s.start === intake.slot);
+	const slot = (await findSlots(env, token, techs, intake.slot, end)).find((s) => s.start === intake.slot);
 	if (!slot) return "closed";
 
 	// Every tech free then gets a hold, so they can all plan around it until one approves it.
