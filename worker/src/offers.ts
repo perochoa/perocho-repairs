@@ -108,10 +108,14 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 		}
 	} catch (error) {
 		// Not on their calendar, so nobody has it yet: open it again before anyone is told, and the
-		// error page tells the tech to try again.
-		await env.DB.prepare("UPDATE requests SET status = 'pending', confirmed_by = NULL WHERE id = ? AND confirmed_by = ?")
-			.bind(request.id, offer.token)
-			.run();
+		// error page tells the tech to try again. It also says nothing changed, so a tech who had
+		// declined goes back to declined: left counted as open, the last other tech declining would
+		// never settle the request, and the customer would hear nothing until it expired.
+		await env.DB.batch([
+			env.DB.prepare("UPDATE requests SET status = 'pending', confirmed_by = NULL WHERE id = ? AND confirmed_by = ?")
+				.bind(request.id, offer.token),
+			env.DB.prepare("UPDATE offers SET declined = ? WHERE token = ?").bind(offer.declined, offer.token),
+		]);
 		throw error;
 	}
 
