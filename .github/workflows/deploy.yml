@@ -39,7 +39,9 @@ jobs:
             worker:
               - 'worker/**'
 
-  # Same checks as CI, run before anything deploys. Skipped along with the worker deploy.
+  # The worker checks from CI, run again before the worker deploys. Skipped along with the worker
+  # deploy. The site's check and test aren't repeated here: the ruleset on main requires CI's build
+  # job on an up-to-date branch before a merge, and the build job below fails on a broken build.
   worker-check:
     needs: changes
     if: needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch'
