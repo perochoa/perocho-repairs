@@ -1,5 +1,5 @@
 // The intake form: parsing, validation and the summary every email and event about it shows.
-import { MAX_QUANTITY, validPhone } from "./limits.ts";
+import { feeText, MAX_QUANTITY, validPhone } from "./limits.ts";
 import { zonedFormat } from "./slots.ts";
 
 export interface Intake {
@@ -114,9 +114,9 @@ export function describe(intake: Intake, time: string): string {
 	return lines.join("\n");
 }
 
-// The same-day fee as quoted: "$10", or "$10–$20" when no service was picked. Worded like
-// feeText in src/services.ts.
-export const sameDayFee = ({ rush, rushFrom }: Intake) => (rushFrom ? `$${rushFrom}–$${rush}` : `$${rush}`);
+// The same-day fee as quoted: "$10", or "$10–$20" when no service was picked. Worded by the
+// site's own feeText, so the emails say what the form said.
+export const sameDayFee = ({ rush, rushFrom }: Intake) => feeText(rushFrom ?? rush, rush);
 
 // What the request is for: the chosen service, else the device.
 export const what = (intake: Intake) => intake.service || intake.device;
