@@ -1,5 +1,5 @@
 // The intake form: parsing, validation and the summary every email and event about it shows.
-import { MAX_QUANTITY } from "./limits.ts";
+import { MAX_QUANTITY, validPhone } from "./limits.ts";
 import { zonedFormat } from "./slots.ts";
 
 export interface Intake {
@@ -26,12 +26,6 @@ export type Parsed = { ok: true; intake: Intake } | { ok: false; spam: boolean }
 
 // Loose on purpose: catches typos and junk, not every invalid address.
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Also loose: digits with the usual separators and an optional leading +, 10 to 15 digits
-// (a local number with its area code, up to an international one). Kept as they typed it.
-const PHONE = /^\+?[\d\s().-]+$/;
-const digits = (phone: string) => phone.replace(/\D/g, "").length;
-const validPhone = (phone: string) => PHONE.test(phone) && digits(phone) >= 10 && digits(phone) <= 15;
 
 // For a tel: link: the digits, and the + if they gave one.
 export const dialable = (phone: string) => (phone.trim().startsWith("+") ? "+" : "") + phone.replace(/\D/g, "");
