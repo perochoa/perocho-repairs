@@ -65,16 +65,15 @@ const send = async (env: Env, mails: Omit<Mail, "from">[]) => {
 // the job keeps trying to delete it and the request is never cleaned up. If the delete throws,
 // the id stays and the job tries again. Meant for a hold that can't become the booking any more:
 // another tech's once one has approved, or any hold of a settled request. Nothing here stops the
-// delete, so a hold its tech could still approve goes through `dropHold` instead. The hourly job
-// is the exception: it also uses this for a declined tech's hold left on an open request, and
-// could delete one that tech approves in the same moment.
+// delete, so a hold its tech could still approve goes through `dropHold` instead.
 async function forgetHold(env: Env, token: string, offer: OfferRow) {
 	await deleteEvent(token, offer.calendar_id, offer.hold_id!);
 	await env.DB.prepare("UPDATE offers SET hold_id = NULL WHERE token = ?").bind(offer.token).run();
 }
 
-// The same for a tech who just declined, the other way round: forgotten first, then deleted. They
-// can approve it in another tab at any moment, and deleting first could delete the hold just after
+// The same for a declined tech's hold, the other way round: forgotten first, then deleted. Both
+// `decline` and the hourly job, which finds the ones whose delete failed, come through here. The
+// tech can approve it after all at any moment, and deleting first could delete the hold just after
 // that approve turned it into the booking. So the hold is taken off the offer in one statement,
 // only while they're still declined, and `confirm` reads the hold in the batch that undoes the
 // decline: whichever runs first, the other sees it, and the event deleted here is never one an
@@ -252,7 +251,9 @@ export async function expire(env: Env, now = Date.now()): Promise<void> {
 	if (token) {
 		for (const offer of strays) {
 			try {
-				await forgetHold(env, token, offer);
+				// A declined tech may be approving it after all right now; nobody else's hold here
+				// is on a request still open to approve.
+				await (offer.declined ? dropHold(env, offer) : forgetHold(env, token, offer));
 			} catch (error) {
 				// Still on the calendar; the next run tries again.
 				console.error(error);
