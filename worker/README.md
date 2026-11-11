@@ -24,8 +24,9 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
   event whose title starts with `Available` (e.g. `Available`, `Available - shop`) for each
   stretch you can be there for drop-offs; a repeating event works. Times are on the quarter
   hour inside the block: 13:00-14:00 offers 13:00, 13:15, 13:30 and 13:45, and 13:05-14:00 starts
-  at 13:15. An all-day `Available` event counts as 9 a.m. to 7 p.m. on each day it covers.
-  Delete or shorten a block to stop offering that time.
+  at 13:15. An all-day `Available` event counts as daytime hours on each day it covers, not the
+  whole day: from `ALL_DAY_FROM` to `ALL_DAY_TO` in `src/slots.ts`. Delete or shorten a block to
+  stop offering that time.
 - **Any number of customers can pick the same time.** Requests and repairs never take a time
   away from anyone else: their events on your calendar are set to "Free".
 - **Your other events still block times inside a block.** All-day events, events set to "Free"
@@ -73,8 +74,9 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
   when every tech declines or it expires, and if it failed to go through.
 - If the emails fail to send, the customer still lands on "sent" when a hold was made, so check
   the calendar too: the hold has everything the email would have, including your link.
-- Times are offered from 2 hours ahead. The form's row of days shows the next 31 days, and its
-  calendar the current month and the 11 after it.
+- Times are offered from `LEAD_HOURS` hours ahead. The form's row of days shows the next
+  `DAYS_AHEAD` days, and its calendar `MONTHS_AHEAD` months, counting the current one. All three
+  are in `wrangler.jsonc`.
 
 ## Setup
 
@@ -192,12 +194,12 @@ until the deploy finishes.
 ## Customer data
 
 Requests, with the customer's name, email, phone and what they wrote, are kept in D1 while
-they're in use. The hourly job deletes a request and its offers `RETENTION_DAYS` (180) days
-after its drop-off time once it's settled: declined by every tech, expired, or marked done. A
-repair that's approved but not marked done stays until it is, so it never drops out of the queue.
-One with a calendar hold the job hasn't managed to delete yet stays until the hold is gone.
-The emails and calendar events about it aren't touched. Change it in `wrangler.jsonc`, then
-`npm run types` and deploy.
+they're in use. The hourly job deletes a request and its offers `RETENTION_DAYS` days after its
+drop-off time once it's settled: declined by every tech, expired, or marked done. A repair that's
+approved but not marked done stays until it is, so it never drops out of the queue. One with a
+calendar hold the job hasn't managed to delete yet stays until the hold is gone. The emails and
+calendar events about it aren't touched. `RETENTION_DAYS` is in `wrangler.jsonc`; change it
+there, then `npm run types` and deploy.
 
 ## Spam
 
@@ -205,18 +207,20 @@ Two defences, neither needing JS:
 
 - **Honeypot.** A hidden `website` field people never see. A post that fills it gets the "sent"
   page and nothing else happens.
-- **Rate limit.** Each visitor IP (`CF-Connecting-IP`) gets **3 valid posts a minute**; past that
-  they land on the "didn't go through" page and nothing is held or emailed, not even to the
-  address they gave, so the form can't be used to flood someone's inbox. Honeypot and invalid
-  posts don't count, since they cost nothing. Three covers a first try plus a couple of retries
-  after "that time isn't open any more"; a real person doesn't send more than that in a minute.
+- **Rate limit.** Each visitor IP (`CF-Connecting-IP`) gets only a few valid posts in a short
+  period (`REQUEST_LIMITER`); past that they land on the "didn't go through" page and nothing is
+  held or emailed, not even to the address they gave, so the form can't be used to flood
+  someone's inbox. Honeypot and invalid posts don't count, since they cost nothing. The limit
+  covers a first try plus a couple of retries after "that time isn't open any more"; a real
+  person doesn't send more than that so quickly.
 
-  Change it in `ratelimits` in `wrangler.jsonc` (`limit`, and `period` of 10 or 60 seconds), then
-  `npm run types` and deploy. Cloudflare counts per location and only roughly, so a bot spread
-  over many IPs or locations can still get through; add Turnstile if that starts happening.
-  Over-limit posts show up in the worker's logs as `rate limited a request`.
+  The numbers are in `ratelimits` in `wrangler.jsonc` (`limit`, and `period` of 10 or 60
+  seconds); change them there, then `npm run types` and deploy. Cloudflare counts per location
+  and only roughly, so a bot spread over many IPs or locations can still get through; add
+  Turnstile if that starts happening. Over-limit posts show up in the worker's logs as
+  `rate limited a request`.
 
-  `GET /slots` has its own limit, **40 fetches a minute** per IP (`SLOTS_LIMITER`), since each one
+  `GET /slots` has its own limit per IP (`SLOTS_LIMITER`, also in `ratelimits`), since each fetch
   reads every tech's calendar. It's higher than the form's own refreshes need because paging
   through the calendar's months fetches each one. Past it the worker answers 429, and the form
   says it couldn't load the times and points people to Messenger and email. These show up as
