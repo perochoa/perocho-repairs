@@ -1,7 +1,8 @@
 import type { APIRoute } from "astro";
 import { getRepairs, monthFormat } from "../repairs";
 import { marketplace } from "../reviews";
-import { feeText, getServices, priceText, sameDayRange } from "../services";
+import { feeText, priceText, sameDayRange } from "../pricing";
+import { getServices } from "../services";
 import { paymentText, site } from "../site";
 
 // The site as Markdown for AI assistants (https://llmstxt.org), from the same details the home page
