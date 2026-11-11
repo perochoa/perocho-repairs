@@ -982,6 +982,80 @@ test("approving it in one tab and declining in another keeps the booking", async
 	assert.equal(calendars["sam@example.com"].filter((e: any) => e.status === "confirmed").length, 1);
 });
 
+// Holds Google's DELETE on `calendarId` until `resume` is called. `reached` settles once one is waiting.
+const pausingDelete = (calendarId: string) => {
+	const fake = globalThis.fetch;
+	let resume!: () => void;
+	let arrive!: () => void;
+	const paused = new Promise<void>((resolve) => (resume = resolve));
+	const reached = new Promise<void>((resolve) => (arrive = resolve));
+	globalThis.fetch = async (input, init) => {
+		if (init?.method === "DELETE" && String(input).includes(`/calendars/${encodeURIComponent(calendarId)}/`)) {
+			arrive();
+			await paused;
+		}
+		return fake(input, init);
+	};
+	return { reached, resume, restore: () => (globalThis.fetch = fake) };
+};
+// The events the worker put on a calendar; the fixture's own have no id.
+const placed = (calendarId: string) => calendars[calendarId].filter((e: any) => e.id).map((e: any) => e.status);
+
+test("approving it in another tab while the decline is deleting the hold keeps the booking", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const sam = linkFor("sam@example.com");
+
+	// The decline has taken Sam out and is about to delete the hold when the approve goes through.
+	const google = pausingDelete("sam@example.com");
+	const declining = press(sam, "decline");
+	await google.reached;
+	await press(sam, "confirm");
+	google.resume();
+	await declining;
+	google.restore();
+
+	// Whichever event the decline deleted, it wasn't the booking, and no hold is left beside it.
+	assert.equal(status(), "confirmed");
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+});
+
+test("an approve that loaded the hold before a decline forgot it doesn't book that hold", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const sam = linkFor("sam@example.com");
+
+	// The approve loads the offer, hold and all, then waits; the decline gets as far as its delete;
+	// the approve finishes; then the delete goes through.
+	let resume!: () => void;
+	const paused = new Promise<void>((resolve) => (resume = resolve));
+	const prepare = db.prepare;
+	db.prepare = (sql: string) => {
+		const statement = prepare(sql);
+		if (!sql.startsWith("UPDATE requests SET status = 'confirmed'")) return statement;
+		return {
+			...statement,
+			bind: (...values: any[]) => {
+				const bound = statement.bind(...values);
+				return { ...bound, run: async () => (await paused, bound.run()) };
+			},
+		};
+	};
+	const google = pausingDelete("sam@example.com");
+	const confirming = press(sam, "confirm");
+	const declining = press(sam, "decline");
+	await google.reached;
+	resume();
+	await confirming;
+	google.resume();
+	await declining;
+	google.restore();
+	db.prepare = prepare;
+
+	assert.equal(status(), "confirmed");
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+});
+
 test("one unreadable calendar costs only that tech their times", async () => {
 	const errors: unknown[] = [];
 	const original = console.error;

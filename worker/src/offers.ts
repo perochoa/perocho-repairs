@@ -63,12 +63,38 @@ const send = async (env: Env, mails: Omit<Mail, "from">[]) => {
 // Deletes a hold from the tech's calendar, then forgets it. The hourly job looks for strays by a
 // hold_id that's still set, so the two go together: a hold that's gone must not keep its id, or
 // the job keeps trying to delete it and the request is never cleaned up. If the delete throws,
-// the id stays and the job tries again. `guard` narrows the update, always a constant string
-// and never anything a request sent: a declined tech's hold, say, must not be forgotten if they
-// approved it in another tab meanwhile and it became their booking.
-async function forgetHold(env: Env, token: string, offer: OfferRow, guard = "") {
+// the id stays and the job tries again. Meant for a hold that can't become the booking any more:
+// another tech's once one has approved, or any hold of a settled request. Nothing here stops the
+// delete, so a hold its tech could still approve goes through `dropHold` instead. The hourly job
+// is the exception: it also uses this for a declined tech's hold left on an open request, and
+// could delete one that tech approves in the same moment.
+async function forgetHold(env: Env, token: string, offer: OfferRow) {
 	await deleteEvent(token, offer.calendar_id, offer.hold_id!);
-	await env.DB.prepare(`UPDATE offers SET hold_id = NULL WHERE token = ?${guard}`).bind(offer.token).run();
+	await env.DB.prepare("UPDATE offers SET hold_id = NULL WHERE token = ?").bind(offer.token).run();
+}
+
+// The same for a tech who just declined, the other way round: forgotten first, then deleted. They
+// can approve it in another tab at any moment, and deleting first could delete the hold just after
+// that approve turned it into the booking. So the hold is taken off the offer in one statement,
+// only while they're still declined, and `confirm` reads the hold in the statement that undoes the
+// decline: whichever runs first, the other sees it, and the event deleted here is never one an
+// approve books. If the delete throws, the id goes back so the hourly job tries again. Should
+// that fail too, the hold stays on their calendar with no record of it, for them to delete by
+// hand. And if they approved it meanwhile, the id put back sits on the approver's offer, where
+// the hourly job takes it for the booking and leaves the leftover hold beside the real one.
+async function dropHold(env: Env, offer: OfferRow) {
+	const forgotten = await env.DB.prepare("UPDATE offers SET hold_id = NULL WHERE token = ? AND hold_id = ? AND declined = 1")
+		.bind(offer.token, offer.hold_id)
+		.run();
+	if (forgotten.meta.changes !== 1) return;
+	try {
+		await deleteEvent(await accessToken(env.GOOGLE_SERVICE_ACCOUNT), offer.calendar_id, offer.hold_id!);
+	} catch (error) {
+		await env.DB.prepare("UPDATE offers SET hold_id = ? WHERE token = ? AND hold_id IS NULL")
+			.bind(offer.hold_id, offer.token)
+			.run();
+		throw error;
+	}
 }
 
 // Once the time has started nobody can approve it; the scheduled job expires it.
@@ -86,7 +112,12 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 		.bind(request.id, offer.token, Date.now())
 		.run();
 	if (won.meta.changes !== 1) return;
-	await env.DB.prepare("UPDATE offers SET declined = 0 WHERE token = ?").bind(offer.token).run();
+	// The hold as it is now, not as loaded: a decline of theirs in another tab may have forgotten
+	// it since and be about to delete it (see `dropHold`), and it mustn't be booked then.
+	const mine = await env.DB.prepare("UPDATE offers SET declined = 0 WHERE token = ? RETURNING hold_id")
+		.bind(offer.token)
+		.first<Pick<OfferRow, "hold_id">>();
+	const holdId = mine?.hold_id ?? null;
 
 	const time = timeOf(env, request);
 	// Their hold becomes the booking, or they get a new one if they weren't free when it came
@@ -98,7 +129,7 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 			summary: notices.bookedSummary(intake),
 			description: notices.bookedDescription(intake, time, offer.name),
 		};
-		if (!offer.hold_id || !(await bookEvent(token, offer.calendar_id, offer.hold_id, booking))) {
+		if (!holdId || !(await bookEvent(token, offer.calendar_id, holdId, booking))) {
 			await createEvent(
 				token,
 				offer.calendar_id,
@@ -138,7 +169,7 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 async function decline(env: Env, { offer, request, intake }: Loaded) {
 	if (request.status !== "pending") return;
 	// Checked again here, not only on what was loaded: had they just approved it in another tab,
-	// their hold is now the booking and mustn't be deleted.
+	// they aren't out, and their hold is now the booking.
 	const changed = await env.DB.prepare(
 		`UPDATE offers SET declined = 1 WHERE token = ?1 AND declined = 0
 		 AND (SELECT status FROM requests WHERE id = ?2) = 'pending'`,
@@ -148,7 +179,7 @@ async function decline(env: Env, { offer, request, intake }: Loaded) {
 	if (changed.meta.changes !== 1) return;
 	if (offer.hold_id) {
 		try {
-			await forgetHold(env, await accessToken(env.GOOGLE_SERVICE_ACCOUNT), offer, " AND declined = 1");
+			await dropHold(env, offer);
 		} catch (error) {
 			// Still on their calendar; the hourly job tries again.
 			console.error(error);
