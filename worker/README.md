@@ -9,10 +9,12 @@ when the customer brings the device in. When it'll be ready is up to the tech wh
 repair and the customer, by phone or email. A time and a phone number are required; without JS,
 or when there are no open times, the form points people to Messenger and email instead. A
 customer can ask for same-day service (paid in person like the rest), which puts their repair at
-the front of the queue. The fee goes by the device, through
-the service picked: +$10 for the controller stick fix, +$20 for the PS5 services, and "$10–$20,
-the tech will confirm" when they pick "Something else, or not sure". For a service priced per item (the TMR stick upgrade), the form also asks how
-many sticks, and the count shows as `Quantity` in the request's emails, events and queue.
+the front of the queue. The fee goes by the device, through the service picked; when they pick
+"Something else, or not sure" it's the range of all the fees, and the tech confirms which. The
+amounts are `sameDay` in each service's frontmatter (`src/content/services/*.md`) and
+`SAME_DAY_FEES` in `wrangler.jsonc`. For a service priced per item (the TMR stick upgrade), the
+form also asks how many sticks, and the count shows as `Quantity` in the request's emails, events
+and queue.
 
 Messenger, email and Facebook Marketplace stay as they are. The form is one more way in.
 
