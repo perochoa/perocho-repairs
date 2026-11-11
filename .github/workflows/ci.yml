@@ -14,8 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Several times what the job should need; it stops a hung step from running for the default six
+  # hours.
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,4 +47,5 @@ jobs:
   worker:
     permissions:
       contents: read
+    # A job that calls a workflow can't set a timeout; worker-check.yml sets its own.
     uses: ./.github/workflows/worker-check.yml
