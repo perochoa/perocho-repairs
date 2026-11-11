@@ -12,7 +12,7 @@ npm ci
 npm run dev      # local dev server on http://localhost:4321
 npm run build    # static build into dist/
 npm run preview  # serve the built dist/
-npm run check    # typecheck (astro check)
+npm run check    # typecheck (astro check, then tsc for the tests)
 npm test         # node --test src/*.test.ts (the price wording in src/pricing.ts)
 ```
 

@@ -307,7 +307,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 			renderCalendar();
 			clearTimeout(waiting);
 			const cached = months.get(month);
-			if (!cached || Date.now() - cached.fetchedAt > REFRESH_MS) waiting = setTimeout(() => loadMonth(month), delay);
+			if (!cached || Date.now() - cached.fetchedAt > REFRESH_MS) waiting = window.setTimeout(() => loadMonth(month), delay);
 		};
 		prevMonth.addEventListener("click", () => showMonth(addMonths(shown, -1), 250));
 		nextMonth.addEventListener("click", () => showMonth(addMonths(shown, 1), 250));
