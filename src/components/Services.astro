@@ -1,5 +1,5 @@
 ---
-// Home page: the service cards, each with a photo across the top.
+// Home page: the service cards, each with a photo header, its price up front and a request button.
 import { Image } from "astro:assets";
 import { type CollectionEntry, render } from "astro:content";
 import { pricing } from "../services";
@@ -20,9 +20,10 @@ const renderedServices = await Promise.all(
 
 <section id="services" class="band" aria-labelledby="services-title">
 	<div class="wrap">
-		<div data-reveal>
+		<div class="head" data-reveal>
 			<p class="eyebrow">Services</p>
 			<h2 id="services-title">What we fix</h2>
+			<p class="lede">Prices in Canadian dollars, paid when you pick it up.</p>
 		</div>
 		<ul class="cards">
 			{
@@ -30,10 +31,8 @@ const renderedServices = await Promise.all(
 					<li class="card" data-reveal style={`--i: ${i}`}>
 						{data.photo && <Image class="photo" src={data.photo} alt="" width={720} />}
 						<h3>{data.title}</h3>
-						<div class="body">
-							<Content />
-						</div>
-						{/* The base price stands out, so it reads at a glance; each deal is a line of its own. */}
+						{/* Price before the description, so it reads at a glance: the base price big, then each
+						    deal as a row of its own, condition on the left and price on the right. */}
 						<div class="price">
 							{price ? (
 								<>
@@ -42,19 +41,25 @@ const renderedServices = await Promise.all(
 										{price.per && <span class="per">{price.per}</span>}
 									</p>
 									{price.deals.length > 0 && (
-										<ul class="deals">
-											{price.deals.map((deal) => (
-												<li>{deal}</li>
+										<dl class="deals">
+											{price.deals.map(({ when, price }) => (
+												<div>
+													<dt>{when}</dt>
+													<dd>{price}</dd>
+												</div>
 											))}
-										</ul>
+										</dl>
 									)}
 								</>
 							) : (
 								<p class="amount quote">Message us for a quote</p>
 							)}
 						</div>
+						<div class="body">
+							<Content />
+						</div>
 						{site.intakeUrl && (
-							<a class="ask" href={`/request/?service=${id}`}>
+							<a class="button secondary request" href={`/request/?service=${id}`}>
 								Request this repair <span aria-hidden="true">→</span>
 							</a>
 						)}
@@ -66,19 +71,98 @@ const renderedServices = await Promise.all(
 </section>
 
 <style>
-	/* Bleeds to the card's edges and fades out under the title, so the text never sits on the photo. */
+	.head {
+		margin-bottom: 2rem;
+	}
+	.head h2 {
+		margin-bottom: 0.5rem;
+	}
+	.lede {
+		margin: 0;
+		color: var(--muted);
+	}
+	.card {
+		padding: 0 0 1.5rem;
+		overflow: hidden;
+	}
+	.card > :not(:global(.photo)) {
+		margin-inline: 1.5rem;
+	}
+	/* A real header photo rather than a faded strip: it's the quickest way to tell the cards apart. */
 	.card :global(.photo) {
 		display: block;
-		width: calc(100% + 3rem);
-		max-width: none;
-		height: 7.5rem;
-		margin: -1.5rem -1.5rem -1.25rem;
+		width: 100%;
+		height: auto;
+		aspect-ratio: 16 / 9;
 		object-fit: cover;
-		border-radius: calc(0.75rem - 1px) calc(0.75rem - 1px) 0 0;
-		mask-image: linear-gradient(to bottom, #000 30%, transparent 85%);
+		border-bottom: 1px solid var(--line);
+		transition: scale 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.card:hover :global(.photo) {
+			scale: 1.03;
+		}
+	}
+	.card h3 {
+		margin-top: 1.25rem;
+		margin-bottom: 1rem;
+	}
+	.price {
+		padding: 0.875rem 1rem;
+		border-radius: 0.5rem;
+		background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+		border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+	}
+	.amount {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 2rem;
+		font-weight: 600;
+		line-height: 1.1;
+		letter-spacing: -0.02em;
+		color: var(--accent);
+	}
+	.amount .per {
+		margin-left: 0.375rem;
+		font-size: 0.9375rem;
+		font-weight: 500;
+		letter-spacing: 0;
+		color: var(--muted);
+	}
+	.amount.quote {
+		font-size: 1.125rem;
+	}
+	.deals {
+		margin: 0.75rem 0 0;
+		padding-top: 0.625rem;
+		border-top: 1px dashed color-mix(in srgb, var(--accent) 30%, var(--line));
+		font-size: 0.875rem;
+	}
+	.deals div {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: 0 0.75rem;
+	}
+	.deals div + div {
+		margin-top: 0.375rem;
+	}
+	.deals dt {
+		color: var(--muted);
+	}
+	.deals dt::first-letter {
+		text-transform: uppercase;
+	}
+	.deals dd {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-weight: 600;
+		color: var(--ink);
 	}
 	.card .body {
 		flex: 1;
+		margin-top: 1.25rem;
+		font-size: 0.9375rem;
 		color: var(--muted);
 	}
 	.card .body :global(p) {
@@ -90,43 +174,15 @@ const renderedServices = await Promise.all(
 	.card .body :global(strong) {
 		color: var(--ink);
 	}
-	.card .body :global(ul) {
-		padding-left: 1.125rem;
+	.request {
+		gap: 0.375rem;
+		margin-top: 1.5rem;
 	}
-	.card .body :global(li + li) {
-		margin-top: 0.375rem;
+	.request span {
+		transition: translate 0.2s;
 	}
-	.price {
-		margin-top: 1rem;
-		padding-top: 0.75rem;
-		border-top: 1px solid var(--line);
-		font-family: var(--font-mono);
-	}
-	.amount {
-		margin: 0;
-		font-size: 1.75rem;
-		font-weight: 600;
-		line-height: 1.2;
-		color: var(--accent);
-	}
-	.amount .per {
-		margin-left: 0.375rem;
-		font-size: 0.9rem;
-		font-weight: 500;
-		color: var(--muted);
-	}
-	.amount.quote {
-		font-size: 1rem;
-		font-weight: 500;
-	}
-	.deals {
-		margin: 0.375rem 0 0;
-		padding: 0;
-		list-style: none;
-		font-size: 0.9rem;
-		color: var(--ink);
-	}
-	.deals li + li {
-		margin-top: 0.25rem;
+	.request:hover span,
+	.request:focus-visible span {
+		translate: 4px 0;
 	}
 </style>
