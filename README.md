@@ -13,6 +13,7 @@ npm run dev      # local dev server on http://localhost:4321
 npm run build    # static build into dist/
 npm run preview  # serve the built dist/
 npm run check    # typecheck (astro check)
+npm test         # node --test src/*.test.ts (the price wording in src/pricing.ts)
 ```
 
 ### Running the request form locally
@@ -69,8 +70,8 @@ services. `public/robots.txt` lets every crawler in, AI ones by name.
 
 Pushing to `main` deploys to GitHub Pages (`.github/workflows/deploy.yml`, built with
 `withastro/action`). `public/CNAME` sets the custom domain. Pull requests run
-`.github/workflows/ci.yml`, which typechecks and builds the site and runs the intake worker's
-checks and tests.
+`.github/workflows/ci.yml`, which typechecks, tests and builds the site and runs the intake
+worker's checks and tests.
 
 Feature branches are made from `main` and tested on the branch itself. Once tested, each one
 is squash-merged into `main` through a pull request, which deploys.

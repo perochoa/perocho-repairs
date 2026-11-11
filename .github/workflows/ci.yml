@@ -32,6 +32,9 @@ jobs:
       - name: Typecheck
         run: npm run check
 
+      - name: Test
+        run: npm test
+
       - name: Build with Astro
         run: npm run build
 
