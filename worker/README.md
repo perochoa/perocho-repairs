@@ -111,9 +111,9 @@ All free tiers. Do these once.
    ```json
    [
      {
-       "name": "Richard",
-       "calendarId": "richard@gmail.com",
-       "email": "richard@example.com"
+       "name": "Jordan",
+       "calendarId": "jordan@example.com",
+       "email": "jordan.repairs@example.com"
      }
    ]
    ```
