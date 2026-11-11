@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { addDays, addMonths, DAY, dayFormat, group, inRow, known, lastOf, noon, timeFormat, weekOf } from "./slot-dates.ts";
+import { addDays, addMonths, DAY, dayFormat, group, inRow, known, lastOf, noon, timeFormat, timesOn, weekOf } from "./slot-dates.ts";
 
 const toronto = "America/Toronto";
 
@@ -214,6 +214,35 @@ test("a day past the row is known once its month has been fetched", () => {
 	assert.equal(known("2027-01-01", lastDay, true, new Map([["2027-01", {}]])), true);
 	// Before the first response there's no row yet, so every day counts as past it.
 	assert.equal(known("2026-11-11", "", false, new Set()), false);
+});
+
+// The row and the calendar read a day's times from the same place, so a day never shows one list in
+// one and another in the other. For the row's last day that place is the row alone: what its month's
+// fetch holds for it is never shown, so the worker's row has to carry the whole of that day. It once
+// stopped 24 hours a day from now, and the last day lost every time after the current time of day.
+test("a day's times come from the row up to its last day, and from its month after", () => {
+	const day = dayFormat(toronto);
+	const time = timeFormat(toronto);
+	const lastDay = "2026-12-12";
+	// The row as it came at 10 a.m. when it stopped part-way through the last day, and December
+	// from its own fetch, which runs to the month's end.
+	const row = group([{ start: "2026-11-12T15:00:00Z" }, { start: "2026-12-12T14:00:00Z" }], day, time);
+	const december = group([{ start: "2026-12-12T14:00:00Z" }, { start: "2026-12-12T20:00:00Z" }, { start: "2026-12-13T14:00:00Z" }], day, time);
+	const months = new Map([["2026-12", { times: december }]]);
+	const values = (on: string, from = months) => timesOn(on, lastDay, row, from).map(({ value }) => value);
+
+	assert.deepEqual(values("2026-11-12"), ["2026-11-12T15:00:00Z"]);
+	// The last day is the row's, with or without its month: the 3 p.m. only December has stays out.
+	assert.deepEqual(values("2026-12-12"), ["2026-12-12T14:00:00Z"]);
+	assert.deepEqual(values("2026-12-12", new Map()), ["2026-12-12T14:00:00Z"]);
+	// The day after is its month's, and has nothing to show until that's fetched.
+	assert.deepEqual(values("2026-12-13"), ["2026-12-13T14:00:00Z"]);
+	assert.deepEqual(values("2026-12-13", new Map()), []);
+	// A day with no times, in the row or past it.
+	assert.deepEqual(values("2026-11-13"), []);
+	assert.deepEqual(values("2026-12-14"), []);
+	// Before the first response there's no row and no last day, so nothing is read from it.
+	assert.deepEqual(timesOn("2026-11-12", "", new Map(), new Map()), []);
 });
 
 // The helpers take and give days as strings and do their arithmetic in UTC, so the machine's own

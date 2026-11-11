@@ -65,7 +65,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 <script>
 	// The date arithmetic and grouping live in their own module, which has tests. It's imported, so
 	// Astro bundles it into this script's file and the CSP has nothing inline to allow.
-	import { addDays, addMonths, DAY, dayFormat, group, inRow, known, noon, type Times, timeFormat, weekOf } from "../scripts/slot-dates";
+	import { addDays, addMonths, DAY, dayFormat, group, inRow, known, noon, type Times, timeFormat, timesOn as timesFrom, weekOf } from "../scripts/slot-dates";
 
 	interface SlotsResponse {
 		timeZone: string;
@@ -122,7 +122,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 		let picked = ""; // the picked day
 		let shown = ""; // the calendar's month
 
-		const timesOn = (day: string) => (day <= lastDay ? row : months.get(day.slice(0, 7))?.times)?.get(day) ?? [];
+		const timesOn = (day: string) => timesFrom(day, lastDay, row, months);
 		const chosen = () => times.querySelector<HTMLInputElement>("input:checked")?.value ?? "";
 
 		const dayButton = (day: string, withWeekday: boolean) => {
