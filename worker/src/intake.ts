@@ -1,5 +1,5 @@
 // The intake form: parsing, validation and the summary every email and event about it shows.
-import { feeText, MAX_QUANTITY, validEmail, validPhone } from "./limits.ts";
+import { feeText, MAX_LENGTH, MAX_QUANTITY, validEmail, validPhone } from "./limits.ts";
 import { zonedFormat } from "./slots.ts";
 
 export interface Intake {
@@ -50,13 +50,13 @@ export function parseIntake(form: FormData, sameDayFees: Record<string, number>)
 	// Required: the form only sends once a time is picked.
 	const slot = Date.parse(field("slot", 40));
 	const fields = {
-		name: field("name", 100),
-		email: field("email", 200),
-		phone: field("phone", 30),
-		service: field("service", 150),
-		device: field("device", 150),
-		problem: field("problem", 2000, true),
-		notes: field("notes", 2000, true),
+		name: field("name", MAX_LENGTH.name),
+		email: field("email", MAX_LENGTH.email),
+		phone: field("phone", MAX_LENGTH.phone),
+		service: field("service", MAX_LENGTH.service),
+		device: field("device", MAX_LENGTH.device),
+		problem: field("problem", MAX_LENGTH.problem, true),
+		notes: field("notes", MAX_LENGTH.notes, true),
 	};
 
 	// Sent only for a per-item service; anything but a whole number in range is a tampered form.

@@ -6,8 +6,9 @@ import { marketplace } from "../../reviews";
 import { feeText, priceText, sameDayRange } from "../../pricing";
 import { getServices } from "../../services";
 import { site } from "../../site";
-// The worker's own limit, so the quantity field can't offer more than it takes.
-import { MAX_QUANTITY } from "../../../worker/src/limits";
+// The worker's own limits, so the quantity field can't offer more than it takes and no field takes
+// more characters than it keeps.
+import { MAX_LENGTH, MAX_QUANTITY } from "../../../worker/src/limits";
 
 const services = await getServices();
 // The same-day fee goes by the device, so it follows the service picked; "not sure" gets the range.
@@ -60,16 +61,16 @@ const unsureFee = sameDayRange(services);
 								<legend>You</legend>
 								<label>
 									Name
-									<input name="name" autocomplete="name" maxlength="100" required />
+									<input name="name" autocomplete="name" maxlength={MAX_LENGTH.name} required />
 								</label>
 								<label>
 									Email
-									<input type="email" name="email" autocomplete="email" maxlength="200" required aria-describedby="email-hint" />
+									<input type="email" name="email" autocomplete="email" maxlength={MAX_LENGTH.email} required aria-describedby="email-hint" />
 								</label>
 								<p class="hint" id="email-hint">We'll email you when we get your request, and again when a tech confirms it.</p>
 								<label>
 									Phone
-									<input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength="30" required aria-describedby="phone-hint" />
+									<input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength={MAX_LENGTH.phone} required aria-describedby="phone-hint" />
 								</label>
 								<p class="hint" id="phone-hint">With the area code, so a tech can call you about the price.</p>
 							</fieldset>
@@ -121,11 +122,11 @@ const unsureFee = sameDayRange(services);
 								}
 								<label>
 									Device and model
-									<input name="device" maxlength="150" placeholder="e.g. DualSense controller, PS5 Slim" required />
+									<input name="device" maxlength={MAX_LENGTH.device} placeholder="e.g. DualSense controller, PS5 Slim" required />
 								</label>
 								<label>
 									What's wrong?
-									<CharacterCount name="problem" rows={4} maxlength={2000} required />
+									<CharacterCount name="problem" rows={4} maxlength={MAX_LENGTH.problem} required />
 								</label>
 								<label class="check rush">
 									<input type="checkbox" name="rush" value="1" aria-labelledby="rush-label" aria-describedby="rush-hint" />
@@ -144,7 +145,7 @@ const unsureFee = sameDayRange(services);
 						<div class="card">
 							<label>
 								<span>Anything else? <span class="optional">(optional)</span></span>
-								<CharacterCount name="notes" rows={3} maxlength={2000} aria-describedby="notes-hint" />
+								<CharacterCount name="notes" rows={3} maxlength={MAX_LENGTH.notes} aria-describedby="notes-hint" />
 							</label>
 							<p class="hint" id="notes-hint">What you've tried, or anything you're bringing with it.</p>
 						</div>

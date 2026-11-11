@@ -8,6 +8,12 @@
 // more is a conversation. The form's quantity field stops here and intake.ts rejects more.
 export const MAX_QUANTITY = 20;
 
+// The most characters each field of a request can be. The form's fields stop typing there
+// (maxlength) and intake.ts cuts what's longer, which only a post that didn't come from the form
+// would be; were the two to differ, the worker would quietly drop the end of what someone typed.
+// The service is a title picked from a list, so the form has nothing to cap there.
+export const MAX_LENGTH = { name: 100, email: 200, phone: 30, service: 150, device: 150, problem: 2000, notes: 2000 } as const;
+
 // Loose on purpose: digits with the usual separators and an optional leading +, 10 to 15 digits
 // (a local number with its area code, up to an international one). Spaces may lead it because the
 // form checks the field as typed, while intake.ts checks it trimmed; either way it's kept as they
