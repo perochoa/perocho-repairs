@@ -63,9 +63,11 @@ const send = async (env: Env, mails: Omit<Mail, "from">[]) => {
 // Deletes a hold from the tech's calendar, then forgets it. The hourly job looks for strays by a
 // hold_id that's still set, so the two go together: a hold that's gone must not keep its id, or
 // the job keeps trying to delete it and the request is never cleaned up. If the delete throws,
-// the id stays and the job tries again. Only for a hold that can't become the booking any more:
+// the id stays and the job tries again. Meant for a hold that can't become the booking any more:
 // another tech's once one has approved, or any hold of a settled request. Nothing here stops the
-// delete, so a hold its tech could still approve goes through `dropHold` instead.
+// delete, so a hold its tech could still approve goes through `dropHold` instead. The hourly job
+// is the exception: it also uses this for a declined tech's hold left on an open request, and
+// could delete one that tech approves in the same moment.
 async function forgetHold(env: Env, token: string, offer: OfferRow) {
 	await deleteEvent(token, offer.calendar_id, offer.hold_id!);
 	await env.DB.prepare("UPDATE offers SET hold_id = NULL WHERE token = ?").bind(offer.token).run();
