@@ -2,7 +2,7 @@
 title: PS5 deep cleaning
 photo: ../gallery/fan-intake-dust.jpg
 order: 2
-price: $70, or $100 with an HDMI port replacement
+price: $70 ($30 if bundled with HDMI port replacement)
 ---
 
 Loud fan or overheating? Dust builds up deep inside the PS5 where you can't reach it, and the
