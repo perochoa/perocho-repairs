@@ -36,3 +36,14 @@ export function priceText(service: Service, services: Service[]) {
 	const base = [`$${p.price}`, p.per].filter(Boolean).join(" ");
 	return [base, ...p.deals.map(({ when, price }) => `${price} ${when}`)].join(", or ");
 }
+
+// A same-day fee as the form, the steps and llms.txt quote it: "$10", or a range like "$10–$20"
+// when it isn't known yet which service (and so which device) it's for. The worker words its
+// emails the same way (sameDayFee in worker/src/intake.ts).
+export const feeText = (from: number, to = from) => (from === to ? `$${from}` : `$${from}–$${to}`);
+
+// Every service's same-day fee, lowest to highest: what "Something else, or not sure" is quoted.
+export function sameDayRange(services: Service[]) {
+	const fees = services.map((service) => service.data.sameDay);
+	return feeText(Math.min(...fees), Math.max(...fees));
+}

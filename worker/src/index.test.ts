@@ -22,7 +22,7 @@ const env = {
 	LEAD_HOURS: 2,
 	DAYS_AHEAD: 31,
 	MONTHS_AHEAD: 12,
-	RUSH_FEE: 20,
+	SAME_DAY_FEES: { "PS5 controller stick drift fix (TMR upgrade)": 10, "PS5 deep cleaning": 20 },
 	RETENTION_DAYS: 180,
 	DEV_ORIGINS: "",
 	TECHS: JSON.stringify([
@@ -756,34 +756,46 @@ test("two techs pressing approve at once: exactly one gets it", async () => {
 	assert.equal(to("jane@example.com").length, 1);
 });
 
-test("a rush is marked everywhere the techs look, and priced for the customer", async () => {
+test("same-day is marked everywhere the techs look, and priced for the customer", async () => {
 	both();
 	await submit({ slot: iso(slotStart), rush: "1" });
 	assert.equal((db.sqlite.prepare("SELECT rush FROM requests").get() as any).rush, 20);
-	assert.equal(holds[0].body.summary, "Request: RUSH PS5 deep cleaning (Jane)");
-	assert.match(holds[0].body.description, /Rush: yes, \+\$20/);
-	assert.match(to("sam@example.com")[0].subject, /^Repair request: RUSH PS5 deep cleaning from Jane, /);
-	assert.match(to("repairs@perocho.com")[0].subject, /RUSH/);
+	assert.equal(holds[0].body.summary, "Request: SAME-DAY PS5 deep cleaning (Jane)");
+	assert.match(holds[0].body.description, /Same-day: yes, \+\$20/);
+	assert.match(to("sam@example.com")[0].subject, /^Repair request: SAME-DAY PS5 deep cleaning from Jane, /);
+	assert.match(to("repairs@perocho.com")[0].subject, /SAME-DAY/);
 	assert.match(text(to("jane@example.com")[0]), /front of the queue\. That's \+\$20, paid in person/);
-	assert.doesNotMatch(to("jane@example.com")[0].subject, /RUSH/);
+	assert.doesNotMatch(to("jane@example.com")[0].subject, /SAME-DAY/);
 
 	const sam = linkFor("sam@example.com");
 	const page = await (await offerPage(sam)).text();
-	assert.match(page, /New rush repair request/);
-	assert.match(page, /RUSH: \+\$20, paid in person/);
+	assert.match(page, /New same-day repair request/);
+	assert.match(page, /SAME-DAY: \+\$20, paid in person/);
 
 	mails = [];
 	await press(sam, "confirm");
-	assert.equal(patched[0].body.summary, "Repair: RUSH PS5 deep cleaning (Jane)");
-	assert.match(to("richard@example.com")[0].subject, /^Drop-off approved by Sam: RUSH /);
+	assert.equal(patched[0].body.summary, "Repair: SAME-DAY PS5 deep cleaning (Jane)");
+	assert.match(to("richard@example.com")[0].subject, /^Drop-off approved by Sam: SAME-DAY /);
 	assert.match(text(to("jane@example.com")[0]), /\+\$20/);
 });
 
-test("a request without a rush says nothing about one", async () => {
-	await submit({ slot: iso(slotStart) });
-	for (const mail of mails) assert.doesNotMatch(mail.subject + text(mail), /rush/i);
+test("same-day costs less for a controller, and is a range when the service isn't known", async () => {
+	await submit({ slot: iso(slotStart), rush: "1", service: "PS5 controller stick drift fix (TMR upgrade)" });
+	assert.equal((db.sqlite.prepare("SELECT rush FROM requests").get() as any).rush, 10);
+	assert.match(text(to("jane@example.com")[0]), /That's \+\$10, paid in person/);
+
+	mails = [];
+	await submit({ slot: iso(slotStart + quarter), rush: "1", service: "", name: "Ann" });
+	assert.match(text(to("jane@example.com")[0]), /That's \+\$10–\$20 depending on the device, which the tech will confirm, paid in person/);
 	const page = await (await offerPage(linkFor("sam@example.com"))).text();
-	assert.doesNotMatch(page.split("<body>")[1], /rush/i);
+	assert.match(page, /SAME-DAY: \+\$10–\$20, paid in person/);
+});
+
+test("a request without same-day says nothing about it", async () => {
+	await submit({ slot: iso(slotStart) });
+	for (const mail of mails) assert.doesNotMatch(mail.subject + text(mail), /same-day|rush/i);
+	const page = await (await offerPage(linkFor("sam@example.com"))).text();
+	assert.doesNotMatch(page.split("<body>")[1], /same-day|rush/i);
 });
 
 // Google answers every `method` request with a 403, until the returned function is called.
@@ -990,7 +1002,7 @@ const queued = async (link: string) =>
 		(match) => [match[1], match[2]],
 	);
 
-test("the queue lists the repairs, rush first, then by drop-off", async () => {
+test("the queue lists the repairs, same-day first, then by drop-off", async () => {
 	const later = await taken({ slot: iso(slotStart + 2 * quarter), name: "Later" });
 	await taken({ slot: iso(slotStart), name: "Early", phone: "416-555-0199" });
 	await taken({ slot: iso(slotStart + 3 * quarter), name: "Rushed", rush: "1" });
@@ -1001,7 +1013,7 @@ test("the queue lists the repairs, rush first, then by drop-off", async () => {
 	assert.match(body, /<h1>Repair queue<\/h1>/);
 	assert.deepEqual([...body.matchAll(/PS5 disc · (\w+)/g)].map((match) => match[1]), ["Rushed", "Early", "Later"]);
 	assert.match(body, /3 repairs/);
-	assert.match(body, /<a class="what" href="\/offers\/[0-9a-f-]+">RUSH PS5 deep cleaning<\/a>/);
+	assert.match(body, /<a class="what" href="\/offers\/[0-9a-f-]+">SAME-DAY PS5 deep cleaning<\/a>/);
 	assert.match(body, /<a href="tel:4165550199">416-555-0199<\/a>/);
 	assert.match(body, /Drop-off \w{3}, /);
 	assert.match(body, /Approved by you<\/span>/);

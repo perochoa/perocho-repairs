@@ -8,8 +8,10 @@ share, and the customer is emailed at each step. Repairs are drop-off only: the 
 when the customer brings the device in. When it'll be ready is up to the tech who does the
 repair and the customer, by phone or email. A time and a phone number are required; without JS,
 or when there are no open times, the form points people to Messenger and email instead. A
-customer can ask for a rush (+$20, paid in person like the rest), which puts their repair at the
-front of the queue. For a service priced per item (the TMR stick upgrade), the form also asks how
+customer can ask for same-day service (paid in person like the rest), which puts their repair at
+the front of the queue. The fee goes by the device, through
+the service picked: +$10 for the controller stick fix, +$20 for the PS5 services, and "$10–$20,
+the tech will confirm" when they pick "Something else, or not sure". For a service priced per item (the TMR stick upgrade), the form also asks how
 many sticks, and the count shows as `Quantity` in the request's emails, events and queue.
 
 Messenger, email and Facebook Marketplace stay as they are. The form is one more way in.
@@ -52,7 +54,7 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
 - **To cancel or move a drop-off**, the tech who approved it changes or deletes the booking and
   emails the customer.
 - **The repair queue is shared.** The "Repair queue" link at the bottom of any of your request
-  pages shows every approved repair not marked done yet, rush first, then by drop-off time, each
+  pages shows every approved repair not marked done yet, same-day first, then by drop-off time, each
   with who approved it (the device comes to them), the customer's number and a link to its
   page. Every tech sees the same queue, and it's up to you which ones you can and want to do.
   Nothing in the queue says who's working on what, so tell the others when you pick one up. A
@@ -62,9 +64,9 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
   approved the drop-off, and one who declined it too. It leaves the queue for everyone, and its
   page shows who approved it and who finished it. Only the first press counts, and it can't be
   undone. Nothing is emailed, and the calendar event stays.
-- **A rush** says `RUSH` in the email subjects, the calendar event's title and on the offer
-  page. The customer was told it's +$20, paid in person with the repair; nothing is charged
-  online.
+- **A same-day repair** says `SAME-DAY` in the email subjects, the calendar event's title, the
+  queue and on the offer page, with the fee the customer was told (a range if they didn't pick a
+  service), paid in person with the repair; nothing is charged online.
 - **The customer gets an email** when the request comes in, when a tech approves the drop-off,
   when every tech declines or it expires, and if it failed to go through.
 - If the emails fail to send, the customer still lands on "sent" when a hold was made, so check
@@ -170,8 +172,9 @@ npm run types   # regenerate worker-configuration.d.ts after changing wrangler.j
 
 The drop-off times come from `SLOT_MINUTES`, `LEAD_HOURS`, `DAYS_AHEAD` and `MONTHS_AHEAD` in
 `wrangler.jsonc`; the form reads each month past the row of days from the calendars when someone
-opens it (`GET /slots?month=YYYY-MM`). The rush fee is `RUSH_FEE` there and `rushFee` in
-`src/site.ts`; keep them the same (`npm test` fails if they differ). The same goes for
+opens it (`GET /slots?month=YYYY-MM`). The same-day fees are `SAME_DAY_FEES` there, by
+service title, and `sameDay` in each `src/content/services/*.md`; keep them the same, including
+when a service is added or renamed (`npm test` fails if they differ). The same goes for
 `MAX_QUANTITY` in `src/intake.ts` and `maxQuantity` in `src/site.ts`, the most items a request
 can be for.
 

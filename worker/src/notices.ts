@@ -1,7 +1,7 @@
 // The emails and calendar text a request produces, beyond the summary in intake.ts.
 
 import type { Mail } from "./fastmail.ts";
-import { describe, type Intake, rushed, stop, what } from "./intake.ts";
+import { describe, type Intake, rushed, sameDayFee, stop, what } from "./intake.ts";
 
 export interface Offered {
 	name: string;
@@ -26,7 +26,7 @@ export const toTech = (intake: Intake, time: string, tech: Offered): Message => 
 		"",
 		`Approve the drop-off or decline it: ${tech.link}`,
 		"The first tech to approve gets the drop-off, and the repair goes in the queue all the techs share, for any of you to pick up. Declining only takes you out of the drop-off; the others can still approve it.",
-		...(intake.rush ? ["It's a rush: once approved, it goes to the front of the queue."] : []),
+		...(intake.rush ? ["It's same-day: once approved, it goes to the front of the queue."] : []),
 		...(tech.held ? ["It's on your calendar as a tentative hold until someone approves it."] : []),
 		"The time is when they drop it off. Call them to talk through the price and when it'll be ready, or reply to this email to reach them.",
 	].join("\n"),
@@ -64,8 +64,10 @@ export const record = (intake: Intake, time: string, to: string, techs: Offered[
 
 const hi = (intake: Intake) => `Hi ${intake.name},`;
 // Payment is in person, so the fee is only a note.
-const rush = (intake: Intake) =>
-	intake.rush ? [`You asked for a rush, so your repair goes to the front of the queue. That's +$${intake.rush}, paid in person with the repair.`] : [];
+const sameDay = (intake: Intake) =>
+	intake.rush
+		? [`You asked for same-day service, so your repair goes to the front of the queue. That's +${sameDayFee(intake)}${intake.rushFrom ? " depending on the device, which the tech will confirm" : ""}, paid in person with the repair.`]
+		: [];
 const yours = (intake: Intake, time: string) => ["", "Your request:", describe(intake, time)];
 
 export const received = (intake: Intake, time: string): Message => ({
@@ -75,7 +77,7 @@ export const received = (intake: Intake, time: string): Message => ({
 		hi(intake),
 		"",
 		`Thanks! We've passed your request on to our techs. We'll email you again when one of them confirms your drop-off for ${stop(time)} Nothing is booked until then.`,
-		...rush(intake),
+		...sameDay(intake),
 		"A tech may call you to talk through the price. Once you've dropped it off, they'll let you know when it's ready. Reply to this email if anything changes.",
 		...yours(intake, time),
 	].join("\n"),
@@ -101,7 +103,7 @@ export const confirmed = (intake: Intake, time: string, tech: string): Message =
 		hi(intake),
 		"",
 		`${tech} has confirmed your repair. Drop off your device on ${stop(time)} We'll let you know when it's ready to pick up.`,
-		...rush(intake),
+		...sameDay(intake),
 		"Reply to this email if you need the address or to change anything.",
 		...yours(intake, time),
 	].join("\n"),

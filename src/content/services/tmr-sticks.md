@@ -8,6 +8,7 @@ per: stick
 bulk:
   price: 20
   from: 4
+sameDay: 10
 ---
 
 Character moving on its own? Camera creeping to one side? That's stick drift. The stock DualSense

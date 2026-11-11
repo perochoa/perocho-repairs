@@ -24,6 +24,10 @@ const services = defineCollection({
 			// This service's price when done along with another. Both cards show it: this one as "$30 with
 			// HDMI port replacement", the other as its total, "$130 with deep cleaning".
 			bundle: z.object({ with: reference("services"), price: z.number() }).optional(),
+			// Dollars added to have it done the same day it's dropped off (ahead of the queue), paid in
+			// person. It goes by the device: less for a controller than a console. The worker keeps a
+			// copy by title in SAME_DAY_FEES (wrangler.jsonc); worker/src/config.test.ts checks they match.
+			sameDay: z.number(),
 		}),
 });
 

@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { getRepairs, monthFormat } from "../repairs";
 import { marketplace } from "../reviews";
-import { getServices, priceText } from "../services";
+import { feeText, getServices, priceText, sameDayRange } from "../services";
 import { paymentText, site } from "../site";
 
 // The site as Markdown for AI assistants (https://llmstxt.org), from the same details the home page
@@ -24,6 +24,7 @@ export const GET: APIRoute = async ({ site: origin }) => {
 			"",
 			// "Message us for a quote" has no dollars to name.
 			`Price: ${priceText(service, services)}${service.data.price !== undefined ? " (Canadian dollars)" : ""}.`,
+			...(site.intakeUrl ? [`Same-day service: +${feeText(service.data.sameDay)}.`] : []),
 			"",
 			(service.body ?? "").trim(),
 			"",
@@ -46,7 +47,7 @@ export const GET: APIRoute = async ({ site: origin }) => {
 		...(site.intakeUrl
 			? [
 					`- [Request a repair](${link("/request/")}) and pick a drop-off time online. A tech confirms by email.`,
-					`- Need it sooner? A rush moves it to the front of the line for $${site.rushFee}.`,
+					`- Need it sooner? Same-day service (${sameDayRange(services)}, by device) moves it to the front of the line.`,
 				]
 			: ["- Message us on Messenger or by email for a quote and a drop-off time."]),
 		...(site.serviceArea ? [`- Where: ${site.serviceArea}`] : []),

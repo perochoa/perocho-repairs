@@ -1,6 +1,9 @@
 ---
 // Home page: how a repair goes, from request to pickup.
+import { getServices, sameDayRange } from "../services";
 import { paymentText, site } from "../site";
+
+const sameDay = sameDayRange(await getServices());
 
 // Matches what the request form and the worker's emails tell customers.
 const steps = site.intakeUrl
@@ -11,7 +14,7 @@ const steps = site.intakeUrl
 			},
 			{
 				title: "Pick a drop-off time",
-				text: `Choose any open time to bring it in. Need it sooner? Add a rush for $${site.rushFee} to move it to the front of the line.`,
+				text: `Choose any open time to bring it in. Need it sooner? Add same-day service (${sameDay}, by device) to move it to the front of the line.`,
 			},
 			{
 				title: "Get it confirmed",
@@ -19,7 +22,7 @@ const steps = site.intakeUrl
 			},
 			{
 				title: "Drop it off",
-				text: `Bring it in at your drop-off time. We work in order, rush first, and agree with you on when it'll be ready. Pay by ${paymentText} at pickup.`,
+				text: `Bring it in at your drop-off time. We work in order, same-day first, and agree with you on when it'll be ready. Pay by ${paymentText} at pickup.`,
 			},
 		]
 	: [
