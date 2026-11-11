@@ -174,9 +174,9 @@ The drop-off times come from `SLOT_MINUTES`, `LEAD_HOURS`, `DAYS_AHEAD` and `MON
 `wrangler.jsonc`; the form reads each month past the row of days from the calendars when someone
 opens it (`GET /slots?month=YYYY-MM`). The same-day fees are `SAME_DAY_FEES` there, by
 service title, and `sameDay` in each `src/content/services/*.md`; keep them the same, including
-when a service is added or renamed (`npm test` fails if they differ). The same goes for
-`MAX_QUANTITY` in `src/intake.ts` and `maxQuantity` in `src/site.ts`, the most items a request
-can be for.
+when a service is added or renamed (`npm test` fails if they differ). `MAX_QUANTITY`, the
+most items a request can be for, has just one copy, in `src/limits.ts`, which the site's form
+imports.
 
 To try the form from the site's dev server against `npx wrangler dev`, see
 [Running the request form locally](../README.md#running-the-request-form-locally).
