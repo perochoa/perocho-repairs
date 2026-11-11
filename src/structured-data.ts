@@ -2,7 +2,7 @@
 // services and prices, and the site. Built from the same details the page shows, and the same
 // services list the page renders.
 import { marketplace } from "./reviews";
-import { basePrice, priceText, type Service } from "./services";
+import { priceText, type Service } from "./services";
 import { capitalized, site } from "./site";
 
 export function homeStructuredData(origin: URL, services: Service[]) {
@@ -44,12 +44,12 @@ export function homeStructuredData(origin: URL, services: Service[]) {
 				hasOfferCatalog: {
 					"@type": "OfferCatalog",
 					name: "PS5 repairs and upgrades",
-					itemListElement: services.map(({ data }) => {
-						const price = basePrice(data);
+					itemListElement: services.map((service) => {
+						const { price, title } = service.data;
 						return {
 							"@type": "Offer",
-							itemOffered: { "@type": "Service", name: data.title, provider: { "@id": business } },
-							description: priceText(data),
+							itemOffered: { "@type": "Service", name: title, provider: { "@id": business } },
+							description: priceText(service, services),
 							...(price !== undefined && { price, priceCurrency: "CAD" }),
 						};
 					}),

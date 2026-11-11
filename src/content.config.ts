@@ -1,4 +1,4 @@
-import { defineCollection } from "astro:content";
+import { defineCollection, reference } from "astro:content";
 import { file, glob } from "astro/loaders";
 import { z } from "astro/zod";
 
@@ -11,19 +11,19 @@ const services = defineCollection({
 			// A photo across the top of the card, fading into it. Decorative: the card's text says it all.
 			// Point at one already in the repo (../gallery/...) rather than adding a copy.
 			photo: image().optional(),
-			// Free text, not a number: prices carry bundles ("$70, or $100 with..."). Leave it and
-			// `perItem` unset to show "Message us for a quote".
-			price: z.string().optional(),
-			// Per-item pricing. Without `price`, the card's price line is built from it: "$25 per stick,
-			// or $20 per stick for 4 or more".
-			perItem: z
-				.object({
-					item: z.string(),
-					price: z.number(),
-					bulkPrice: z.number(),
-					bulkFrom: z.number(),
-				})
-				.optional(),
+			// What other services' price lines call this one ("$30 with HDMI port replacement").
+			// Defaults to the title.
+			short: z.string().optional(),
+			// The base price in dollars, the big number on the card. Leave it unset to show "Message us
+			// for a quote".
+			price: z.number().optional(),
+			// Makes `price` per item ("$25 per stick"), and gives the request form a "How many?" field.
+			per: z.string().optional(),
+			// A lower per-item price from a quantity up: "$20 per stick for 4 or more".
+			bulk: z.object({ price: z.number(), from: z.number() }).optional(),
+			// This service's price when done along with another. Both cards show it: this one as "$30 with
+			// HDMI port replacement", the other as its total, "$130 with deep cleaning".
+			bundle: z.object({ with: reference("services"), price: z.number() }).optional(),
 		}),
 });
 
