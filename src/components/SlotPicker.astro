@@ -63,14 +63,16 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 </div>
 
 <script>
+	// The date arithmetic and grouping live in their own module, which has tests. It's imported, so
+	// Astro bundles it into this script's file and the CSP has nothing inline to allow.
+	import { addDays, addMonths, DAY, dayFormat, group, inRow, known, noon, type Times, timeFormat, weekOf } from "../scripts/slot-dates";
+
 	interface SlotsResponse {
 		timeZone: string;
 		daysAhead: number;
 		monthsAhead: number;
 		slots: { start: string }[];
 	}
-	// A day's times by its date; days without any aren't listed.
-	type Times = Map<string, { value: string; label: string }[]>;
 
 	const picker = document.querySelector<HTMLElement>("[data-slot-picker]");
 	const form = picker?.closest("form");
@@ -94,16 +96,8 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 		const unavailable = (reason: string) => form.dispatchEvent(new CustomEvent("slots-unavailable", { detail: reason }));
 		const motion = () => (matchMedia("(prefers-reduced-motion: no-preference)").matches ? "smooth" : "auto");
 
-		// Days are "YYYY-MM-DD" and months "YYYY-MM", in the worker's zone. They're formatted and
-		// stepped as noon UTC on that date, so neither ever shifts a day.
-		const DAY = 86_400_000;
-		const noon = (day: string) => Date.parse(`${day}T12:00:00Z`);
-		const addDays = (day: string, n: number) => new Date(noon(day) + n * DAY).toISOString().slice(0, 10);
-		const addMonths = (month: string, n: number) => {
-			const [year, index] = month.split("-").map(Number);
-			return new Date(Date.UTC(year, index - 1 + n, 1)).toISOString().slice(0, 7);
-		};
-		const lastOf = (month: string) => addDays(`${addMonths(month, 1)}-01`, -1);
+		// Days are "YYYY-MM-DD" and months "YYYY-MM", in the worker's zone. They're formatted as noon
+		// UTC on that date, the way slot-dates steps them, so neither ever shifts a day.
 		const utc = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", ...options });
 		const weekdayOf = utc({ weekday: "short" });
 		const nameOf = utc({ weekday: "long", month: "long", day: "numeric" });
@@ -128,19 +122,6 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 		let picked = ""; // the picked day
 		let shown = ""; // the calendar's month
 
-		const group = (slots: { start: string }[]) => {
-			const byDay: Times = new Map();
-			for (const slot of slots) {
-				const start = new Date(slot.start);
-				const key = dateIn.format(start);
-				if (!byDay.has(key)) byDay.set(key, []);
-				byDay.get(key)!.push({ value: slot.start, label: timeIn.format(start) });
-			}
-			return byDay;
-		};
-		// A month past the row needs its own fetch; one inside it is already known.
-		const inRow = (month: string) => lastOf(month) <= lastDay;
-		const known = (day: string) => (day <= lastDay ? rowLoaded : months.has(day.slice(0, 7)));
 		const timesOn = (day: string) => (day <= lastDay ? row : months.get(day.slice(0, 7))?.times)?.get(day) ?? [];
 		const chosen = () => times.querySelector<HTMLInputElement>("input:checked")?.value ?? "";
 
@@ -152,7 +133,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 			const open = timesOn(day).length > 0;
 			button.disabled = !open;
 			button.ariaPressed = String(day === picked);
-			button.ariaLabel = nameOf.format(noon(day)) + (open || !known(day) ? "" : ", no times");
+			button.ariaLabel = nameOf.format(noon(day)) + (open || !known(day, lastDay, rowLoaded, months) ? "" : ", no times");
 			const part = (text: string, className: string) => Object.assign(document.createElement("span"), { textContent: text, className });
 			if (withWeekday) button.append(part(weekdayOf.format(noon(day)), "weekday"));
 			button.append(part(String(Number(day.slice(8))), "date"));
@@ -170,8 +151,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 		};
 		const scrollToDay = (day: string, behavior: ScrollBehavior) => {
 			if (day > lastDay) return;
-			const index = Math.floor((noon(day) - noon(today)) / DAY / 7);
-			week.scrollTo({ left: index * week.clientWidth, behavior });
+			week.scrollTo({ left: weekOf(day, today) * week.clientWidth, behavior });
 		};
 
 		const renderWeek = () => {
@@ -201,7 +181,8 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 			prevMonth.disabled = shown <= today.slice(0, 7);
 			nextMonth.disabled = shown >= addMonths(today.slice(0, 7), monthsAhead - 1);
 
-			const loading = !inRow(shown) && !months.has(shown);
+			// A month past the row needs its own fetch; one inside it is already known.
+			const loading = !inRow(shown, lastDay) && !months.has(shown);
 			calendarDays.ariaBusy = String(loading && !failed.has(shown));
 			if (loading) {
 				calendarNote.textContent = failed.has(shown) ? "We couldn't load this month's times. Try again in a moment." : "Loading times…";
@@ -227,7 +208,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 		// their pick and the day they had open, or says why it can't.
 		const rebuild = () => {
 			const before = chosen();
-			if (picked && known(picked) && timesOn(picked).length === 0) {
+			if (picked && known(picked, lastDay, rowLoaded, months) && timesOn(picked).length === 0) {
 				// Their day closed: fall back to the first open day in the row, as on first load.
 				picked = row.keys().next().value ?? "";
 			}
@@ -274,7 +255,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 		// Reads a month past the row. The calendar shows it loading meanwhile, and a failed fetch
 		// keeps whatever was there before.
 		const loadMonth = (month: string) => {
-			if (inRow(month) || fetching.has(month)) return;
+			if (inRow(month, lastDay) || fetching.has(month)) return;
 			fetching.add(month);
 			const url = new URL(picker.dataset.url!, location.href);
 			url.searchParams.set("month", month);
@@ -287,7 +268,7 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 						cached.fetchedAt = Date.now();
 						return;
 					}
-					months.set(month, { times: group((JSON.parse(body) as SlotsResponse).slots), body, fetchedAt: Date.now() });
+					months.set(month, { times: group((JSON.parse(body) as SlotsResponse).slots, dateIn, timeIn), body, fetchedAt: Date.now() });
 					rebuild();
 				})
 				.catch(() => {
@@ -320,12 +301,12 @@ const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 		// Builds the row from a /slots response.
 		const show = (response: SlotsResponse) => {
 			const now = Date.now();
-			dateIn = new Intl.DateTimeFormat("en-CA", { timeZone: response.timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
-			timeIn = new Intl.DateTimeFormat("en-CA", { timeZone: response.timeZone, hour: "numeric", minute: "2-digit" });
+			dateIn = dayFormat(response.timeZone);
+			timeIn = timeFormat(response.timeZone);
 			today = dateIn.format(now);
 			lastDay = dateIn.format(now + response.daysAhead * DAY);
 			monthsAhead = response.monthsAhead;
-			row = group(response.slots);
+			row = group(response.slots, dateIn, timeIn);
 			rowLoaded = true;
 
 			const later = [...months.values()].some(({ times }) => [...times.keys()].some((day) => day > lastDay));

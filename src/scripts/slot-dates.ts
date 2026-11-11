@@ -21,9 +21,9 @@ export const lastOf = (month: string) => addDays(`${addMonths(month, 1)}-01`, -1
 export const weekOf = (day: string, today: string) => Math.floor((noon(day) - noon(today)) / DAY / 7);
 
 // The times' dates and labels are in the worker's zone, so the days match the times it offers and
-// holds. en-CA writes a date as YYYY-MM-DD, which is what makes dayIn's output a day as above.
-export const dayIn = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
-export const timeIn = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, hour: "numeric", minute: "2-digit" });
+// holds. en-CA writes a date as YYYY-MM-DD, which is what makes dayFormat's output a day as above.
+export const dayFormat = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+export const timeFormat = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, hour: "numeric", minute: "2-digit" });
 
 // Sorts a response's times under their days, in the order they came.
 export const group = (slots: { start: string }[], day: Intl.DateTimeFormat, time: Intl.DateTimeFormat) => {

@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { addDays, addMonths, DAY, dayIn, group, inRow, known, lastOf, noon, timeIn, weekOf } from "./slot-dates.ts";
+import { addDays, addMonths, DAY, dayFormat, group, inRow, known, lastOf, noon, timeFormat, weekOf } from "./slot-dates.ts";
 
 const toronto = "America/Toronto";
 
@@ -116,15 +116,15 @@ test("a day's page doesn't slip where the clocks change or the year ends", () =>
 });
 
 test("the worker's zone decides a time's day, not UTC or the machine", () => {
-	const day = dayIn(toronto);
+	const day = dayFormat(toronto);
 	// 11:30 at night in Toronto is already the next day in UTC, and the day after next in Auckland.
 	assert.equal(day.format(Date.parse("2026-11-12T04:30:00Z")), "2026-11-11");
 	assert.equal(day.format(Date.parse("2026-11-12T05:00:00Z")), "2026-11-12");
 	// In summer Toronto is four hours behind, not five.
 	assert.equal(day.format(Date.parse("2026-07-02T03:59:00Z")), "2026-07-01");
 	assert.equal(day.format(Date.parse("2026-07-02T04:00:00Z")), "2026-07-02");
-	assert.equal(dayIn("Pacific/Auckland").format(Date.parse("2026-11-11T11:00:00Z")), "2026-11-12");
-	assert.equal(dayIn("UTC").format(Date.parse("2026-12-31T23:59:59Z")), "2026-12-31");
+	assert.equal(dayFormat("Pacific/Auckland").format(Date.parse("2026-11-11T11:00:00Z")), "2026-11-12");
+	assert.equal(dayFormat("UTC").format(Date.parse("2026-12-31T23:59:59Z")), "2026-12-31");
 });
 
 test("times are grouped under their day in the worker's zone, in the order they came", () => {
@@ -134,7 +134,7 @@ test("times are grouped under their day in the worker's zone, in the order they 
 		{ start: "2026-11-12T04:30:00.000Z" }, // 11:30 p.m., still the 11th in Toronto
 		{ start: "2026-11-13T22:00:00.000Z" }, // 5:00 p.m. on the 13th; the 12th has none
 	];
-	const byDay = group(slots, dayIn(toronto), timeIn(toronto));
+	const byDay = group(slots, dayFormat(toronto), timeFormat(toronto));
 	assert.deepEqual([...byDay.keys()], ["2026-11-11", "2026-11-13"]);
 	assert.equal(byDay.has("2026-11-12"), false);
 	// The value is the worker's own string, since the form sends it back as it came.
@@ -151,20 +151,20 @@ test("times are grouped under their day in the worker's zone, in the order they 
 });
 
 test("grouping nothing gives no days", () => {
-	assert.equal(group([], dayIn(toronto), timeIn(toronto)).size, 0);
+	assert.equal(group([], dayFormat(toronto), timeFormat(toronto)).size, 0);
 });
 
 test("times on a day the clocks change stay on that day", () => {
 	// 2026-11-01 in Toronto runs from 04:00Z to 05:00Z the next day: 25 hours, with 1:30 a.m. twice.
 	const back = group(
 		[{ start: "2026-11-01T04:00:00Z" }, { start: "2026-11-01T05:30:00Z" }, { start: "2026-11-01T06:30:00Z" }, { start: "2026-11-02T04:59:00Z" }, { start: "2026-11-02T05:00:00Z" }],
-		dayIn(toronto),
-		timeIn(toronto),
+		dayFormat(toronto),
+		timeFormat(toronto),
 	);
 	assert.deepEqual([...back.keys()], ["2026-11-01", "2026-11-02"]);
 	assert.equal(back.get("2026-11-01")!.length, 4);
 	// 2026-03-08 runs from 05:00Z to 04:00Z the next day: 23 hours.
-	const forward = group([{ start: "2026-03-08T04:59:00Z" }, { start: "2026-03-08T05:00:00Z" }, { start: "2026-03-09T03:59:00Z" }, { start: "2026-03-09T04:00:00Z" }], dayIn(toronto), timeIn(toronto));
+	const forward = group([{ start: "2026-03-08T04:59:00Z" }, { start: "2026-03-08T05:00:00Z" }, { start: "2026-03-09T03:59:00Z" }, { start: "2026-03-09T04:00:00Z" }], dayFormat(toronto), timeFormat(toronto));
 	assert.deepEqual(
 		[...forward].map(([day, times]) => [day, times.length]),
 		[
@@ -224,7 +224,7 @@ test("none of it reads the machine's zone", () => {
 		days: [addDays("2026-10-31", 1), addDays("2026-03-08", 1), addDays("2026-12-31", 1), addDays("2026-03-01", -1)],
 		months: [addMonths("2026-12", 1), addMonths("2026-01", -1), lastOf("2028-02")],
 		week: weekOf("2026-11-05", "2026-10-29"),
-		grouped: [...group([{ start: "2026-11-12T04:30:00.000Z" }], dayIn(toronto), timeIn(toronto))],
+		grouped: [...group([{ start: "2026-11-12T04:30:00.000Z" }], dayFormat(toronto), timeFormat(toronto))],
 	});
 	const zone = process.env.TZ;
 	try {
