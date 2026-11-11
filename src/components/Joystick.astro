@@ -4,10 +4,10 @@
 // on window, so other parts of the page can react to it.
 interface Props {
 	// Where the "fixing a real one" link points after the fix; pass "" to leave it out.
-	requestHref?: string;
+	requestHref: string;
 }
 
-const { requestHref = "/request/" } = Astro.props;
+const { requestHref } = Astro.props;
 ---
 
 <div class="joystick">
