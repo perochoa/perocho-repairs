@@ -1135,6 +1135,62 @@ test("an approve that loaded the hold before a decline forgot it doesn't book th
 	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
 });
 
+test("approving it while the hourly job is deleting the declined hold keeps the booking", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const sam = linkFor("sam@example.com");
+	// Sam is out, with his hold still on the calendar for the hourly job.
+	await withFailing("DELETE", () => press(sam, "decline"));
+	assert.deepEqual(placed("sam@example.com"), ["tentative"]);
+
+	// The job is about to delete the hold when Sam changes his mind.
+	const google = pausingDelete("sam@example.com");
+	const ticking = tick();
+	await google.reached;
+	await press(sam, "confirm");
+	google.resume();
+	await ticking;
+	google.restore();
+
+	// The job had forgotten the hold first, so the approve booked a new event, not the one deleted.
+	assert.equal(status(), "confirmed");
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+});
+
+test("approving it after the hourly job found the declined hold keeps the booking", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const sam = linkFor("sam@example.com");
+	await withFailing("DELETE", () => press(sam, "decline"));
+
+	// The job has read its list of holds to delete, Sam's among them, and waits while he approves.
+	let resume!: () => void;
+	const paused = new Promise<void>((resolve) => (resume = resolve));
+	const prepare = db.prepare;
+	db.prepare = (sql: string) => {
+		const statement = prepare(sql);
+		if (!sql.startsWith("SELECT offers.* FROM offers JOIN requests")) return statement;
+		return {
+			...statement,
+			all: async () => {
+				const read = await statement.all();
+				await paused;
+				return read;
+			},
+		};
+	};
+	const ticking = tick();
+	await press(sam, "confirm");
+	resume();
+	await ticking;
+	db.prepare = prepare;
+
+	// His hold became the booking meanwhile, and the job left it alone.
+	assert.equal(status(), "confirmed");
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+	assert.ok(!deleted.some((d) => d.calendarId === "sam@example.com"));
+});
+
 test("one unreadable calendar costs only that tech their times", async () => {
 	const errors: unknown[] = [];
 	const original = console.error;
