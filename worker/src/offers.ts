@@ -60,6 +60,17 @@ const send = async (env: Env, mails: Omit<Mail, "from">[]) => {
 	}
 };
 
+// Deletes a hold from the tech's calendar, then forgets it. The hourly job looks for strays by a
+// hold_id that's still set, so the two go together: a hold that's gone must not keep its id, or
+// the job keeps trying to delete it and the request is never cleaned up. If the delete throws,
+// the id stays and the job tries again. `guard` narrows the update, always a constant string
+// and never anything a request sent: a declined tech's hold, say, must not be forgotten if they
+// approved it in another tab meanwhile and it became their booking.
+async function forgetHold(env: Env, token: string, offer: OfferRow, guard = "") {
+	await deleteEvent(token, offer.calendar_id, offer.hold_id!);
+	await env.DB.prepare(`UPDATE offers SET hold_id = NULL WHERE token = ?${guard}`).bind(offer.token).run();
+}
+
 // Once the time has started nobody can approve it; the scheduled job expires it.
 const passed = (request: RequestRow, now = Date.now()) => request.slot_start <= now;
 
@@ -106,12 +117,7 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 
 	// Everyone else's hold goes. One that can't be deleted keeps its id, and the hourly job tries again.
 	const others = offers.filter((other) => other.token !== offer.token && other.hold_id);
-	const results = await Promise.allSettled(
-		others.map(async (other) => {
-			await deleteEvent(token, other.calendar_id, other.hold_id!);
-			await env.DB.prepare("UPDATE offers SET hold_id = NULL WHERE token = ?").bind(other.token).run();
-		}),
-	);
+	const results = await Promise.allSettled(others.map((other) => forgetHold(env, token, other)));
 	for (const result of results) if (result.status === "rejected") console.error(result.reason);
 
 	// Every other tech hears, those who declined the drop-off too: the repair is in their queue now.
@@ -138,8 +144,7 @@ async function decline(env: Env, { offer, request, intake }: Loaded) {
 	if (changed.meta.changes !== 1) return;
 	if (offer.hold_id) {
 		try {
-			await deleteEvent(await accessToken(env.GOOGLE_SERVICE_ACCOUNT), offer.calendar_id, offer.hold_id);
-			await env.DB.prepare("UPDATE offers SET hold_id = NULL WHERE token = ? AND declined = 1").bind(offer.token).run();
+			await forgetHold(env, await accessToken(env.GOOGLE_SERVICE_ACCOUNT), offer, " AND declined = 1");
 		} catch (error) {
 			// Still on their calendar; the hourly job tries again.
 			console.error(error);
@@ -201,8 +206,7 @@ export async function expire(env: Env, now = Date.now()): Promise<void> {
 	if (token) {
 		for (const offer of strays) {
 			try {
-				await deleteEvent(token, offer.calendar_id, offer.hold_id!);
-				await env.DB.prepare("UPDATE offers SET hold_id = NULL WHERE token = ?").bind(offer.token).run();
+				await forgetHold(env, token, offer);
 			} catch (error) {
 				// Still on the calendar; the next run tries again.
 				console.error(error);
