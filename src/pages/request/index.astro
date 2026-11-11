@@ -6,6 +6,8 @@ import { marketplace } from "../../reviews";
 import { feeText, priceText, sameDayRange } from "../../pricing";
 import { getServices } from "../../services";
 import { site } from "../../site";
+// The worker's own limit, so the quantity field can't offer more than it takes.
+import { MAX_QUANTITY } from "../../../worker/src/limits";
 
 const services = await getServices();
 // The same-day fee goes by the device, so it follows the service picked; "not sure" gets the range.
@@ -103,7 +105,7 @@ const unsureFee = sameDayRange(services);
 														name="quantity"
 														inputmode="numeric"
 														min="1"
-														max={site.maxQuantity}
+														max={MAX_QUANTITY}
 														step="1"
 														value="2"
 														required

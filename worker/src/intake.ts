@@ -1,4 +1,5 @@
 // The intake form: parsing, validation and the summary every email and event about it shows.
+import { MAX_QUANTITY } from "./limits.ts";
 import { zonedFormat } from "./slots.ts";
 
 export interface Intake {
@@ -31,9 +32,6 @@ export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE = /^\+?[\d\s().-]+$/;
 const digits = (phone: string) => phone.replace(/\D/g, "").length;
 const validPhone = (phone: string) => PHONE.test(phone) && digits(phone) >= 10 && digits(phone) <= 15;
-
-// The form's own limit on the quantity field, maxQuantity in src/site.ts (config.test.ts).
-export const MAX_QUANTITY = 20;
 
 // For a tel: link: the digits, and the + if they gave one.
 export const dialable = (phone: string) => (phone.trim().startsWith("+") ? "+" : "") + phone.replace(/\D/g, "");

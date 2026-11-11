@@ -3,9 +3,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { site } from "../../src/site.ts";
 import { wranglerVars } from "../scripts/wrangler-vars.ts";
-import { MAX_QUANTITY } from "./intake.ts";
 
 // Each service's title and same-day fee, from its frontmatter. The fields are plain one-line
 // `key: value`s there, so this doesn't need a YAML parser.
@@ -22,8 +20,4 @@ const services = () => {
 
 test("the site quotes the same-day fees the worker charges, by service", () => {
 	assert.deepEqual(wranglerVars().SAME_DAY_FEES, Object.fromEntries(services()));
-});
-
-test("the form offers no more items than the worker takes", () => {
-	assert.equal(site.maxQuantity, MAX_QUANTITY);
 });
