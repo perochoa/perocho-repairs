@@ -112,13 +112,16 @@ export async function listEvents(
 		timeMax: new Date(to).toISOString(),
 		singleEvents: "true",
 		maxResults: "2500",
-		fields: "items(summary,transparency,start,end,attendees(self,responseStatus))",
+		fields: "nextPageToken,items(summary,transparency,start,end,attendees(self,responseStatus))",
 	});
 	const response = await fetch(`${API}/${encodeURIComponent(calendarId)}/events?${query}`, {
 		headers: { Authorization: `Bearer ${token}` },
 	});
 	if (!response.ok) throw new Error(`google events: ${response.status} ${await response.text()}`);
-	const { items = [] } = (await response.json()) as { items?: GoogleEvent[] };
+	const { items = [], nextPageToken } = (await response.json()) as { items?: GoogleEvent[]; nextPageToken?: string };
+	// More events than one page holds. The missing ones could be busy times, so offering what's left
+	// could book a tech when they're not free; the caller treats the throw as no times from them.
+	if (nextPageToken) throw new Error("google events: more than one page of events, so some are missing");
 
 	return items.map((item) => ({
 		start: Date.parse(item.start.dateTime ?? item.start.date ?? ""),

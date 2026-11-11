@@ -86,6 +86,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 let db: ReturnType<typeof fakeD1>;
 let patched: { calendarId: string; eventId: string; body: any }[];
 let calendars: Record<string, object[]>;
+let paged: Set<string>; // calendars Google answers with a nextPageToken, as if cut off
 let holds: { calendarId: string; body: any }[];
 let deleted: { calendarId: string; eventId: string }[];
 let mails: any[];
@@ -112,6 +113,7 @@ beforeEach(() => {
 			{ summary: "Gym", start: { dateTime: iso(slotStart + hour) }, end: { dateTime: iso(slotStart + 2 * hour) } },
 		],
 	};
+	paged = new Set();
 	db = fakeD1();
 	holds = [];
 	deleted = [];
@@ -160,7 +162,7 @@ beforeEach(() => {
 				calendars[calendarId].push({ ...body, id });
 				return Response.json({ id });
 			}
-			return Response.json({ items: calendars[calendarId] });
+			return Response.json({ items: calendars[calendarId], ...(paged.has(calendarId) && { nextPageToken: "page2" }) });
 		}
 		if (url.href === "https://api.fastmail.com/jmap/session") {
 			return Response.json({
@@ -974,6 +976,27 @@ test("one unreadable calendar costs only that tech their times", async () => {
 	assert.equal(submitted.headers.get("Location"), "https://repairs.perocho.com/request/sent/");
 	assert.deepEqual(holds.map((hold) => hold.calendarId), ["sam@example.com"]);
 	assert.ok(errors.some((e) => String(e).includes("can't read Typo's calendar")));
+});
+
+test("a calendar with more events than one page costs only that tech their times", async () => {
+	// Sam's busy events could be on the page never read, so Sam offers nothing; Richard still does.
+	paged.add("sam@example.com");
+	const errors: unknown[] = [];
+	const original = console.error;
+	console.error = (message) => errors.push(message);
+	const response = await getSlots();
+	const busy = await submit({ slot: iso(slotStart) });
+	const later = await submit({ slot: iso(slotStart + 2 * hour) });
+	console.error = original;
+
+	const starts = ((await response.json()) as { slots: { start: string }[] }).slots.map((s) => s.start);
+	// Only Sam is free at slotStart; Richard is free again two hours after.
+	assert.ok(!starts.includes(iso(slotStart)));
+	assert.ok(starts.includes(iso(slotStart + 2 * hour)));
+	assert.equal(busy.headers.get("Location"), "https://repairs.perocho.com/request/closed/");
+	assert.equal(later.headers.get("Location"), "https://repairs.perocho.com/request/sent/");
+	assert.deepEqual(holds.map((hold) => hold.calendarId), ["richard@example.com"]);
+	assert.ok(errors.some((e) => String(e).includes("can't read Sam's calendar")));
 });
 
 test("fails when no calendar can be read", async () => {
