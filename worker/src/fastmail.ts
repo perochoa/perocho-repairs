@@ -7,8 +7,8 @@ const USING = [
 	"urn:ietf:params:jmap:submission",
 ];
 
-type Call = [string, Record<string, unknown>, string];
-type MethodResponse = [string, Record<string, unknown>, string];
+// A JMAP method call or response: name, arguments, call id.
+type Invocation = [string, Record<string, unknown>, string];
 
 interface Identity {
 	id: string;
@@ -17,7 +17,7 @@ interface Identity {
 }
 
 // The first id a Mailbox/query found, e.g. the drafts mailbox.
-function firstId([, result, callId]: MethodResponse): string {
+function firstId([, result, callId]: Invocation): string {
 	const ids = result.ids;
 	if (!Array.isArray(ids) || typeof ids[0] !== "string") {
 		throw new Error(`jmap: no ${callId} mailbox`);
@@ -46,14 +46,14 @@ export async function sendMail(token: string, mails: Mail[]): Promise<void> {
 	};
 	const accountId = session.primaryAccounts["urn:ietf:params:jmap:mail"];
 
-	const call = async (methodCalls: Call[]) => {
+	const call = async (methodCalls: Invocation[]) => {
 		const response = await fetch(session.apiUrl, {
 			method: "POST",
 			headers,
 			body: JSON.stringify({ using: USING, methodCalls }),
 		});
 		if (!response.ok) throw new Error(`jmap: ${response.status} ${await response.text()}`);
-		const { methodResponses } = (await response.json()) as { methodResponses: MethodResponse[] };
+		const { methodResponses } = (await response.json()) as { methodResponses: Invocation[] };
 		const error = methodResponses.find(([name]) => name === "error");
 		if (error) throw new Error(`jmap: ${JSON.stringify(error[1])}`);
 		return methodResponses;
@@ -71,6 +71,8 @@ export async function sendMail(token: string, mails: Mail[]): Promise<void> {
 		if (!identity) throw new Error(`jmap: no identity for ${mail.from}`);
 		return identity;
 	};
+	// Resolved once, before the request that sends, so a missing identity still sends nothing.
+	const senders = mails.map(identityOf);
 	const draftsId = firstId(draftsMailbox);
 	const sentId = firstId(sentMailbox);
 
@@ -83,7 +85,7 @@ export async function sendMail(token: string, mails: Mail[]): Promise<void> {
 			{
 				mailboxIds: { [draftsId]: true },
 				keywords: { $draft: true, $seen: true },
-				from: [{ name: identityOf(mail).name, email: identityOf(mail).email }],
+				from: [{ name: senders[i].name, email: senders[i].email }],
 				to: [{ email: mail.to }],
 				...(mail.replyTo && { replyTo: [{ email: mail.replyTo }] }),
 				subject: mail.subject,
@@ -93,7 +95,7 @@ export async function sendMail(token: string, mails: Mail[]): Promise<void> {
 		]),
 	);
 	const sends = Object.fromEntries(
-		mails.map((mail, i) => [`send${i}`, { identityId: identityOf(mail).id, emailId: `#draft${i}` }]),
+		mails.map((_, i) => [`send${i}`, { identityId: senders[i].id, emailId: `#draft${i}` }]),
 	);
 	const destroy = mails.flatMap((mail, i) => (toSelf(mail) ? [`#send${i}`] : []));
 	const file = Object.fromEntries(
