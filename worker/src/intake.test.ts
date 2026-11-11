@@ -45,6 +45,20 @@ test("shows a rush in the summary, and nothing when there isn't one", () => {
 	assert.equal(rushed(plain.intake), "DualSense");
 });
 
+test("takes a quantity only when sent, as a whole number in range", () => {
+	const plain = parseIntake(form({}), 20);
+	assert.ok(plain.ok);
+	assert.equal("quantity" in plain.intake, false);
+	const sticks = parseIntake(form({ quantity: "4" }), 20);
+	assert.ok(sticks.ok);
+	assert.equal(sticks.intake.quantity, 4);
+	assert.match(describe(sticks.intake, "Mon, Nov 2, 10:00 a.m."), /\nQuantity: 4\n/);
+	assert.doesNotMatch(describe(plain.intake, "Mon, Nov 2, 10:00 a.m."), /Quantity/);
+	for (const quantity of ["0", "-1", "2.5", "21", "two"]) {
+		assert.equal(parseIntake(form({ quantity }), 20).ok, false, quantity);
+	}
+});
+
 test("needs a time", () => {
 	for (const slot of ["", "tomorrow-ish"]) assert.equal(parseIntake(form({ slot }), 20).ok, false, slot);
 });

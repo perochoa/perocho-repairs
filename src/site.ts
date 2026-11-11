@@ -27,6 +27,9 @@ interface Site {
 	// Dollars added to move a repair to the front of the queue. worker/src/config.test.ts checks it
 	// matches RUSH_FEE in worker/wrangler.jsonc.
 	rushFee: number;
+	// The most items (sticks) the form takes for a per-item service: a few controllers' worth; more
+	// is a conversation. worker/src/config.test.ts checks it matches MAX_QUANTITY in intake.ts.
+	maxQuantity: number;
 }
 
 export const site: Site = {
@@ -46,6 +49,7 @@ export const site: Site = {
 	hours: "Drop-off whenever a tech can take devices in. The request form shows the open times.",
 	intakeUrl: "https://perocho-intake.perocho-xela.workers.dev",
 	rushFee: 20,
+	maxQuantity: 20,
 };
 
 // For a payment that starts a sentence or a list: "Cash".

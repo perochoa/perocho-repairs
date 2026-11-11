@@ -50,7 +50,8 @@ the failed send. After a post the worker redirects to `SITE_URL`, the live site;
 
 - `src/site.ts`: name, contact links and other site-wide details. `intakeUrl` points at the
   intake worker; unset it to hide the request form and every link to it.
-- `src/content/services/*.md`: one file per service, with its price.
+- `src/content/services/*.md`: one file per service, with its price. A service with `perItem`
+  pricing gets a "How many?" field on the request form.
 - `src/content/repairs/<yyyy-mm-slug>/index.md`: past repairs, with before/after photos beside
   them. The repo is public, so strip location data from photos before committing.
 - `src/content/gallery/gallery.yaml`: single photos and short clips from the bench, with the

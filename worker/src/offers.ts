@@ -310,8 +310,9 @@ export async function queue(env: Env, token: string): Promise<Response> {
 	const items = results.map((request) => {
 		const intake: Intake = JSON.parse(request.intake);
 		const time = timeOf(env, request);
-		// The device too, when the title is the service.
-		const details = [`Drop-off ${time}`, intake.service && intake.device, intake.name].filter((detail) => detail);
+		// The device too, when the title is the service, and how many sticks or the like it's for.
+		const quantity = intake.quantity ? `Quantity ${intake.quantity}` : "";
+		const details = [`Drop-off ${time}`, intake.service && intake.device, quantity, intake.name].filter((detail) => detail);
 		const call = ` · <a href="tel:${escape(dialable(intake.phone))}">${escape(intake.phone)}</a>`;
 		const title = `${request.rush ? "RUSH " : ""}${escape(what(intake))}`;
 		const approver = request.mine === request.confirmed_by ? "you" : escape(request.approver ?? "another tech");
