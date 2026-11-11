@@ -9,7 +9,8 @@ when the customer brings the device in. When it'll be ready is up to the tech wh
 repair and the customer, by phone or email. A time and a phone number are required; without JS,
 or when there are no open times, the form points people to Messenger and email instead. A
 customer can ask for a rush (+$20, paid in person like the rest), which puts their repair at the
-front of the queue.
+front of the queue. For a service priced per item (the TMR stick upgrade), the form also asks how
+many sticks, and the count shows as `Quantity` in the request's emails, events and queue.
 
 Messenger, email and Facebook Marketplace stay as they are. The form is one more way in.
 
@@ -170,7 +171,9 @@ npm run types   # regenerate worker-configuration.d.ts after changing wrangler.j
 The drop-off times come from `SLOT_MINUTES`, `LEAD_HOURS`, `DAYS_AHEAD` and `MONTHS_AHEAD` in
 `wrangler.jsonc`; the form reads each month past the row of days from the calendars when someone
 opens it (`GET /slots?month=YYYY-MM`). The rush fee is `RUSH_FEE` there and `rushFee` in
-`src/site.ts`; keep them the same (`npm test` fails if they differ).
+`src/site.ts`; keep them the same (`npm test` fails if they differ). The same goes for
+`MAX_QUANTITY` in `src/intake.ts` and `maxQuantity` in `src/site.ts`, the most items a request
+can be for.
 
 To try the form from the site's dev server against `npx wrangler dev`, see
 [Running the request form locally](../README.md#running-the-request-form-locally).

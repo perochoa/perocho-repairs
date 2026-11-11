@@ -13,6 +13,9 @@ export interface Intake {
 	// The rush fee in dollars they agreed to, 0 for none. Kept as a fee, not a flag, so a later
 	// change to RUSH_FEE doesn't change what earlier customers were quoted.
 	rush: number;
+	// How many of a per-item service's items (sticks, for the TMR upgrade). Only set when the form
+	// asks, so requests for other services, and ones filed before it asked, have none.
+	quantity?: number;
 }
 
 export type Parsed = { ok: true; intake: Intake } | { ok: false; spam: boolean };
@@ -25,6 +28,9 @@ export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE = /^\+?[\d\s().-]+$/;
 const digits = (phone: string) => phone.replace(/\D/g, "").length;
 const validPhone = (phone: string) => PHONE.test(phone) && digits(phone) >= 10 && digits(phone) <= 15;
+
+// The form's own limit on the quantity field, maxQuantity in src/site.ts (config.test.ts).
+export const MAX_QUANTITY = 20;
 
 // For a tel: link: the digits, and the + if they gave one.
 export const dialable = (phone: string) => (phone.trim().startsWith("+") ? "+" : "") + phone.replace(/\D/g, "");
@@ -52,7 +58,13 @@ export function parseIntake(form: FormData, rushFee: number): Parsed {
 		notes: field("notes", 2000, true),
 	};
 
+	// Sent only for a per-item service; anything but a whole number in range is a tampered form.
+	const quantityField = field("quantity", 10);
+	const quantity = quantityField === "" ? undefined : Number(quantityField);
+	const validQuantity = quantity === undefined || (Number.isInteger(quantity) && quantity >= 1 && quantity <= MAX_QUANTITY);
+
 	const valid =
+		validQuantity &&
 		fields.name !== "" &&
 		fields.device !== "" &&
 		fields.problem !== "" &&
@@ -61,7 +73,9 @@ export function parseIntake(form: FormData, rushFee: number): Parsed {
 		!Number.isNaN(slot);
 
 	if (!valid) return { ok: false, spam: false };
-	return { ok: true, intake: { ...fields, slot, rush: form.get("rush") === "1" ? rushFee : 0 } };
+	const rush = form.get("rush") === "1" ? rushFee : 0;
+	// Left off when there's none, so the stored form reads the same as before the form asked.
+	return { ok: true, intake: { ...fields, slot, rush, ...(quantity && { quantity }) } };
 }
 
 const formatter = zonedFormat("en-CA", {
@@ -83,6 +97,7 @@ export function describe(intake: Intake, time: string): string {
 		["Email", intake.email],
 		["Phone", intake.phone],
 		["Service", intake.service],
+		["Quantity", intake.quantity ? String(intake.quantity) : ""],
 		["Device", intake.device],
 		["Drop-off time", time],
 		["Rush", intake.rush ? `yes, +$${intake.rush} (paid in person)` : ""],
