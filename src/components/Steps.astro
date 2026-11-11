@@ -1,6 +1,7 @@
 ---
 // Home page: how a repair goes, from request to pickup.
-import { getServices, sameDayRange } from "../services";
+import { sameDayRange } from "../pricing";
+import { getServices } from "../services";
 import { paymentText, site } from "../site";
 
 const sameDay = sameDayRange(await getServices());

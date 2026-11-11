@@ -10,7 +10,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check",
+    "check": "astro check && tsc --noEmit -p tsconfig.test.json",
+    "test": "node --test src/*.test.ts",
     "astro": "astro"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
+    "@types/node": "^26.6.6",
     "typescript": "^6.0.3"
   }
 }

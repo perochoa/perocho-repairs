@@ -1,5 +1,8 @@
+// The site, for astro check. Tests (src/**/*.test.ts) run in Node, so they're checked separately
+// with Node's types (tsconfig.test.json); `npm run check` runs both. @types/node still reaches the
+// browser code through Vite's types, so client scripts use window.setTimeout, which returns a number.
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist", "worker"]
+  "exclude": ["dist", "worker", "src/**/*.test.ts"]
 }

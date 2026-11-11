@@ -2,7 +2,8 @@
 // services and prices, and the site. Built from the same details the page shows, and the same
 // services list the page renders.
 import { marketplace } from "./reviews";
-import { priceText, type Service } from "./services";
+import { priceText } from "./pricing";
+import type { Service } from "./services";
 import { capitalized, site } from "./site";
 
 export function homeStructuredData(origin: URL, services: Service[]) {

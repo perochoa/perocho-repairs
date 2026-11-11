@@ -1,0 +1,11 @@
+// The site's tests, which run in Node: `npm run check` checks them after astro check.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.test.ts"],
+  "exclude": []
+}
