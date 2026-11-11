@@ -44,3 +44,10 @@ export const inRow = (month: string, lastDay: string) => lastOf(month) <= lastDa
 // past it waits for its month, of which `months` holds the ones fetched so far.
 export const known = (day: string, lastDay: string, rowLoaded: boolean, months: { has(month: string): boolean }) =>
 	day <= lastDay ? rowLoaded : months.has(day.slice(0, 7));
+
+// A day's times as the picker shows them, in the row and in the calendar alike: a day up to lastDay
+// is read from the row and nowhere else, even when its month has been fetched too, and a day past
+// it from its month. So the row has to hold all of lastDay, which is why the worker ends the row's
+// times at the end of that day and not 24 hours a day from now, part-way through it.
+export const timesOn = (day: string, lastDay: string, row: Times, months: { get(month: string): { times: Times } | undefined }) =>
+	(day <= lastDay ? row : months.get(day.slice(0, 7))?.times)?.get(day) ?? [];

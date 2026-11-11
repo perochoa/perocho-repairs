@@ -96,11 +96,20 @@ function wallClock(date: number, hour: number, timeZone: string) {
 	return local - offset(guess, timeZone);
 }
 
-// The year and month (0-11) it is at a moment in timeZone.
-function monthAt(ms: number, timeZone: string) {
+// The year, month (0-11) and day of the month it is at a moment in timeZone.
+function dateAt(ms: number, timeZone: string) {
 	const parts = formatter(timeZone).formatToParts(ms);
 	const part = (type: string) => Number(parts.find((p) => p.type === type)!.value);
-	return { year: part("year"), month: part("month") - 1 };
+	return { year: part("year"), month: part("month") - 1, day: part("day") };
+}
+
+// The end of the form's row of days: the midnight that ends the day it is daysAhead days from now,
+// in timeZone. The form works out that last day the same way and shows it from the row alone, in
+// its calendar too, so the row carries the whole day. Stopping at now + daysAhead days, part-way
+// through it, hid that day's later times until they were less than daysAhead days off.
+export function rowEnd(now: number, daysAhead: number, timeZone: string) {
+	const { year, month, day } = dateAt(now + daysAhead * DAY, timeZone);
+	return wallClock(Date.UTC(year, month, day + 1), 0, timeZone);
 }
 
 // Midnight on the 1st of a month in timeZone; the month may run past 11 into later years.
@@ -108,7 +117,7 @@ const monthStart = (year: number, month: number, timeZone: string) => wallClock(
 
 // The end of the booking window: the current month and the monthsAhead - 1 after it, in timeZone.
 export function horizon(now: number, monthsAhead: number, timeZone: string) {
-	const { year, month } = monthAt(now, timeZone);
+	const { year, month } = dateAt(now, timeZone);
 	return monthStart(year, month + monthsAhead, timeZone);
 }
 
@@ -119,7 +128,7 @@ export function monthWindow(month: string, now: number, monthsAhead: number, tim
 	const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
 	if (!match) return null;
 	const [year, index] = [Number(match[1]), Number(match[2]) - 1];
-	const current = monthAt(now, timeZone);
+	const current = dateAt(now, timeZone);
 	const ahead = (year - current.year) * 12 + index - current.month;
 	if (ahead < 0 || ahead >= monthsAhead) return null;
 	return {

@@ -242,6 +242,28 @@ test("lists a month's times when asked for one", async () => {
 	assert.ok(slots.every((s) => monthOf(Date.parse(s.start)) === month));
 });
 
+// The form shows the row's last day from the row alone, so the row has to carry all of that day,
+// not only the times before the current time of day 31 days on.
+test("the row's last day has the same times as its month does", async () => {
+	const dayOf = (ms: number) =>
+		new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(ms);
+	const lastDay = dayOf(Date.now() + env.DAYS_AHEAD * 24 * hour);
+	// Open from the day before to the day after, whatever the time of day here.
+	const [year, month, date] = lastDay.split("-").map(Number);
+	const around = Date.UTC(year, month - 1, date, 12);
+	calendars["sam@example.com"].push({ summary: "Available", start: { dateTime: iso(around - 36 * hour) }, end: { dateTime: iso(around + 36 * hour) } });
+	const on = async (response: Response) =>
+		((await response.json()) as { slots: { start: string }[] }).slots.map((s) => s.start).filter((start) => dayOf(Date.parse(start)) === lastDay);
+	const inRow = await on(await getSlots());
+	const inMonth = await on(await slotsFor(lastDay.slice(0, 7)));
+	// A full day of quarter hours, give or take the hour of a clock change.
+	assert.ok(inMonth.length >= 23 * 4);
+	assert.deepEqual(inRow, inMonth);
+	// And the row stops there: the day after is the calendar's.
+	const row = ((await (await getSlots()).json()) as { slots: { start: string }[] }).slots;
+	assert.ok(row.every((s) => dayOf(Date.parse(s.start)) <= lastDay));
+});
+
 test("turns down a month outside the booking window before calling Google", async () => {
 	for (const month of [monthAhead(-1), monthAhead(12), "2026-13", "soon"]) {
 		const response = await slotsFor(month);

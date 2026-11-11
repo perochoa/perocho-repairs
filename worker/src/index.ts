@@ -1,6 +1,6 @@
 // Intake for repairs.perocho.com.
 //   GET  /slots          open drop-off times in the techs' "Available" blocks, for the form's time list:
-//                        the next DAYS_AHEAD days, or with ?month=YYYY-MM that month, if it's one of
+//                        the next DAYS_AHEAD days in full, or with ?month=YYYY-MM that month, if it's one of
 //                        the next MONTHS_AHEAD
 //   POST /request        the form; holds the picked time on every free tech's calendar, offers it to
 //                        every tech by email and tells the customer, then redirects back to the
@@ -19,7 +19,7 @@ import { formatTime, type Intake, parseIntake } from "./intake.ts";
 import * as notices from "./notices.ts";
 import { act, expire, page, queue } from "./offers.ts";
 import type { Outcome } from "./outcomes.ts";
-import { horizon, monthWindow, openSlots, type Slot, slotOptions } from "./slots.ts";
+import { horizon, monthWindow, openSlots, rowEnd, type Slot, slotOptions } from "./slots.ts";
 import { parseTechs, type Tech } from "./techs.ts";
 
 // Env comes from worker-configuration.d.ts (`npm run types` after changing wrangler.jsonc).
@@ -51,9 +51,10 @@ async function slots(env: Env, month: string | null, origin: string | null, ip: 
 		console.warn("rate limited /slots");
 		return new Response("Too many requests", { status: 429 });
 	}
-	// No month is the next DAYS_AHEAD days, for the form's week of days; a month is for its calendar.
+	// No month is the next DAYS_AHEAD days, to the end of the last of them, for the form's week of
+	// days; a month is for its calendar.
 	const now = Date.now();
-	const window = month === null ? { from: now, to: slotOptions(env, now).to } : monthWindow(month, now, env.MONTHS_AHEAD, env.TIME_ZONE);
+	const window = month === null ? { from: now, to: rowEnd(now, env.DAYS_AHEAD, env.TIME_ZONE) } : monthWindow(month, now, env.MONTHS_AHEAD, env.TIME_ZONE);
 	if (!window) return new Response("No such month to book in", { status: 400 });
 	const allowed = [env.SITE_URL, ...env.DEV_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)];
 	const token = await accessToken(env.GOOGLE_SERVICE_ACCOUNT);
