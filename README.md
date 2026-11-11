@@ -13,7 +13,7 @@ npm run dev      # local dev server on http://localhost:4321
 npm run build    # static build into dist/
 npm run preview  # serve the built dist/
 npm run check    # typecheck (astro check, then tsc for the tests)
-npm test         # node --test src/*.test.ts (the price wording in src/pricing.ts)
+npm test         # node --test on src/*.test.ts and src/scripts/*.test.ts (price wording, the picker's dates)
 ```
 
 ### Running the request form locally
