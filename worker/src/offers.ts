@@ -208,6 +208,11 @@ async function finish(env: Env, { offer, request }: Loaded) {
 		.run();
 }
 
+// A hold still on a tech's calendar that isn't the booking. The hourly job deletes these, and keeps
+// a request while it has one, so both of its queries must mean the same thing by it. A constant,
+// never anything a request sent, so it's safe to put in the SQL as it is.
+const NOT_BOOKING = "offers.hold_id IS NOT NULL AND offers.token IS NOT requests.confirmed_by";
+
 // Run by the cron in wrangler.jsonc. Closes the requests nobody approved in time and tells the
 // customer, then deletes the holds nobody needs any more: a declined tech's, and every hold but
 // the booking once a request is settled. Holds whose delete failed earlier are among them. Last,
@@ -233,7 +238,7 @@ export async function expire(env: Env, now = Date.now()): Promise<void> {
 
 	const { results: strays } = await env.DB.prepare(
 		`SELECT offers.* FROM offers JOIN requests ON requests.id = offers.request_id
-		 WHERE offers.hold_id IS NOT NULL AND offers.token IS NOT requests.confirmed_by
+		 WHERE ${NOT_BOOKING}
 		 AND (offers.declined = 1 OR requests.status != 'pending')`,
 	).all<OfferRow>();
 	// Without Google the holds wait for the next run, but the retention delete below still runs.
@@ -255,7 +260,7 @@ export async function expire(env: Env, now = Date.now()): Promise<void> {
 	const settled = `SELECT id FROM requests WHERE slot_start < ?1
 		AND (status IN ('declined', 'expired') OR done IS NOT NULL)
 		AND NOT EXISTS (SELECT 1 FROM offers WHERE offers.request_id = requests.id
-			AND offers.hold_id IS NOT NULL AND offers.token IS NOT requests.confirmed_by)`;
+			AND ${NOT_BOOKING})`;
 	const cutoff = now - env.RETENTION_DAYS * 86_400_000;
 	await env.DB.batch([
 		env.DB.prepare(`DELETE FROM offers WHERE request_id IN (${settled})`).bind(cutoff),
