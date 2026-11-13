@@ -33,6 +33,7 @@ const { eyebrow, title, text, mark = "drift" } = Astro.props;
 		<p class="eyebrow">{eyebrow}</p>
 		<h1>{title}</h1>
 		<p>{text}</p>
+		<slot name="before-actions" />
 		<div class="actions">
 			<slot />
 		</div>

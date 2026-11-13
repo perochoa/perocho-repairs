@@ -6,7 +6,10 @@ with a tentative hold on the calendar of every tech free at the picked time. The
 approve the drop-off gets the device at that time, the repair goes in one queue all the techs
 share, and the customer is emailed at each step. Repairs are drop-off only: the picked time is
 when the customer brings the device in. When it'll be ready is up to the tech who does the
-repair and the customer, by phone or email. A time and a phone number are required; without JS,
+repair and the customer. A time and an email are required. A second way to reach them is
+optional: a phone number (the form says it's only for updates: no spam, no cold calls) or
+Messenger, in which case the page after the form gives them a message with the request's details
+to copy and send us there, so the chat can be matched to the request. Without JS,
 or when there are no open times, the form points people to Messenger and email instead. A
 customer can ask for same-day service (paid in person like the rest), which puts their repair at
 the front of the queue. The fee goes by the device, through the service picked; when they pick
@@ -36,9 +39,10 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
 - **Every request is emailed to every tech**, each with their own link, and a copy without
   links goes to `repairs@perocho.com`. If you're free at the picked time it's also on your
   calendar as a yellow, tentative `Request: ...` event, with the details and your link in its
-  description. Every request has the customer's phone number, so you can call them to talk
-  through the price (the offer page has a tap-to-call link); replying to the email reaches them
-  too.
+  description. Replying to the email reaches the customer. If they gave a phone number, the
+  offer page has a tap-to-call link; the form promises it's only used for updates, so don't cold
+  call. If they picked Messenger instead, the request says `Other contact: Messenger` and they'll
+  message us with its name, email and drop-off time.
 - **Open your link to approve the drop-off or decline it.** Opening it changes nothing; the
   buttons do. Approving is for the drop-off time only: it says the device can come to you then,
   not that you'll do the repair.

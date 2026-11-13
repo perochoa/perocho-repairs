@@ -5,6 +5,7 @@ import { zonedFormat } from "./slots.ts";
 export interface Intake {
 	name: string;
 	email: string;
+	// Optional: empty when they gave none. Requests filed before only email was required all have one.
 	phone: string;
 	service: string;
 	device: string;
@@ -20,6 +21,9 @@ export interface Intake {
 	// How many of a per-item service's items (sticks, for the TMR upgrade). Only set when the form
 	// asks, so requests for other services, and ones filed before it asked, have none.
 	quantity?: number;
+	// They picked Messenger as their other way to be reached. The site then asks them to message us
+	// with their request's details, so the chat can be matched to it. Left off otherwise.
+	messenger?: true;
 }
 
 export type Parsed = { ok: true; intake: Intake } | { ok: false; spam: boolean };
@@ -70,13 +74,16 @@ export function parseIntake(form: FormData, sameDayFees: Record<string, number>)
 		fields.device !== "" &&
 		fields.problem !== "" &&
 		validEmail(fields.email) &&
-		validPhone(fields.phone) &&
+		(fields.phone === "" || validPhone(fields.phone)) &&
 		!Number.isNaN(slot);
 
 	if (!valid) return { ok: false, spam: false };
 	const sameDay = form.get("rush") === "1" ? sameDayQuote(sameDayFees, fields.service) : { rush: 0 };
+	// The form only sends the phone field while Phone is the one picked, so a number and Messenger
+	// together come from a tampered form; the number wins.
+	const messenger = form.get("contact") === "messenger" && fields.phone === "";
 	// Left off when there's none, so the stored form reads the same as before the form asked.
-	return { ok: true, intake: { ...fields, slot, ...sameDay, ...(quantity && { quantity }) } };
+	return { ok: true, intake: { ...fields, slot, ...sameDay, ...(quantity && { quantity }), ...(messenger && { messenger }) } };
 }
 
 const formatter = zonedFormat("en-CA", {
@@ -97,6 +104,7 @@ export function describe(intake: Intake, time: string): string {
 		["Name", intake.name],
 		["Email", intake.email],
 		["Phone", intake.phone],
+		["Other contact", intake.messenger ? "Messenger" : ""],
 		["Service", intake.service],
 		["Quantity", intake.quantity ? String(intake.quantity) : ""],
 		["Device", intake.device],
