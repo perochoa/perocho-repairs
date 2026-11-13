@@ -40,9 +40,10 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
 - **Every request is emailed to every tech**, each with their own link, and a copy without
   links goes to `repairs@perocho.com`. If you're free at the picked time it's also on your
   calendar as a yellow, tentative `Request: ...` event, with the details and your link in its
-  description. Replying to the email reaches the customer. If they gave a phone number, the
-  offer page has a tap-to-call link; the form promises it's only used for updates, so don't cold
-  call. If they picked Messenger instead, the request says `Other contact: Messenger` and they'll
+  description. Replying to the email reaches the customer. The offer page and the queue also have
+  an email link to them, with the request and drop-off time in the subject and repairs@ copied so
+  the other techs can see who's been in touch. If they gave a phone number, both have a
+  tap-to-call link too; the form promises it's only used for updates, so don't cold call. If they picked Messenger instead, the request says `Other contact: Messenger` and they'll
   message us with its name, email and drop-off time.
 - **Open your link to approve the drop-off or decline it.** Opening it changes nothing; the
   buttons do. Approving is for the drop-off time only: it says the device can come to you then,
