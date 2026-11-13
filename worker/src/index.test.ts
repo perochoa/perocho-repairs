@@ -642,6 +642,52 @@ test("shows a tech the request without changing anything", async () => {
 	assert.equal(patched.length + deleted.length, 0);
 });
 
+// The email link's href on a page, back from HTML as a browser reads it, and what a mail app reads
+// from that: the address, and each field after the ?. encodeURIComponent leaves an apostrophe as it
+// is, so the page has it escaped too.
+const emailLink = (body: string) => {
+	const href = body.match(/<a href="(mailto:[^"]*)">/)![1].replaceAll("&#39;", "'").replaceAll("&amp;", "&");
+	const [address, query] = href.slice("mailto:".length).split("?");
+	const fields = query.split("&").map((field) => field.split("=").map(decodeURIComponent));
+	return { href, address: decodeURIComponent(address), fields };
+};
+
+test("links the page to an email to the customer, about this request, copying repairs@", async () => {
+	await submit({ slot: iso(slotStart) });
+	const when = text(to("jane@example.com")[0]).match(/Drop-off time: (.*)/)![1];
+	const body = await (await offerPage(linkFor("sam@example.com"))).text();
+	assert.match(body, /<p class="call"><a href="mailto:jane@example\.com\?cc=repairs@perocho\.com&amp;subject=Your%20repair%20request%3A%20PS5%20deep%20cleaning%2C%20[^"]+">Email Jane: jane@example\.com<\/a><\/p>/);
+	assert.deepEqual(emailLink(body).fields, [
+		["cc", "repairs@perocho.com"],
+		["subject", `Your repair request: PS5 deep cleaning, ${when}`],
+	]);
+});
+
+test("links the page to an email even without a phone number", async () => {
+	await submit({ phone: "", messenger: "1" });
+	const body = await (await offerPage(linkFor("sam@example.com"))).text();
+	assert.ok(!body.includes('href="tel:'));
+	assert.equal(emailLink(body).address, "jane@example.com");
+});
+
+test("encodes what the customer wrote in the email link, so it can't add fields or break out", async () => {
+	const email = `o'neil+"x"&bcc=evil@example.com`;
+	const device = `PS5 "Pro" <b>#1? & bcc=evil@example.com`;
+	await submit({ slot: iso(slotStart), email, service: "", device });
+	const when = text(to(email)[0]).match(/Drop-off time: (.*)/)![1];
+	const link = linkFor("sam@example.com");
+	await press(link, "confirm");
+	for (const body of [await (await offerPage(link)).text(), await (await queueOf(link)).text()]) {
+		const { href, address, fields } = emailLink(body);
+		assert.ok(!/["<> ]/.test(href), href);
+		assert.equal(address, email);
+		assert.deepEqual(fields, [
+			["cc", "repairs@perocho.com"],
+			["subject", `Your repair request: ${device}, ${when}`],
+		]);
+	}
+});
+
 test("locks the tech's pages down to their own styles and forms", async () => {
 	await submit({ slot: iso(slotStart) });
 	const sam = linkFor("sam@example.com");
@@ -1295,7 +1341,7 @@ test("the queue lists the repairs, same-day first, then by drop-off", async () =
 	assert.deepEqual([...body.matchAll(/PS5 disc · (\w+)/g)].map((match) => match[1]), ["Rushed", "Early", "Later"]);
 	assert.match(body, /3 repairs/);
 	assert.match(body, /<a class="what" href="\/offers\/[0-9a-f-]+">SAME-DAY PS5 deep cleaning<\/a>/);
-	assert.match(body, /<a href="tel:4165550199">416-555-0199<\/a>/);
+	assert.match(body, /<a href="tel:4165550199">416-555-0199<\/a> · <a href="mailto:jane@example\.com\?cc=repairs@perocho\.com&amp;subject=Your%20repair%20request%3A%20[^"]+">jane@example\.com<\/a>/);
 	assert.match(body, /Drop-off \w{3}, /);
 	assert.match(body, /Approved by you<\/span>/);
 	assert.match(await (await offerPage(later)).text(), new RegExp(`<a href="${new URL(later).pathname}/queue">Repair queue</a>`));

@@ -40,9 +40,10 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
 - **Every request is emailed to every tech**, each with their own link, and a copy without
   links goes to `repairs@perocho.com`. If you're free at the picked time it's also on your
   calendar as a yellow, tentative `Request: ...` event, with the details and your link in its
-  description. Replying to the email reaches the customer. If they gave a phone number, the
-  offer page has a tap-to-call link; the form promises it's only used for updates, so don't cold
-  call. If they picked Messenger instead, the request says `Other contact: Messenger` and they'll
+  description. Replying to the email reaches the customer. The offer page and the queue also have
+  an email link to them, with the request and drop-off time in the subject and repairs@ copied so
+  the other techs can see who's been in touch. If they gave a phone number, both have a
+  tap-to-call link too; the form promises it's only used for updates, so don't cold call. If they picked Messenger instead, the request says `Other contact: Messenger` and they'll
   message us with its name, email and drop-off time.
 - **Open your link to approve the drop-off or decline it.** Opening it changes nothing; the
   buttons do. Approving is for the drop-off time only: it says the device can come to you then,
@@ -106,6 +107,32 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
 - Times are offered from `LEAD_HOURS` hours ahead. The form's row of days shows the next
   `DAYS_AHEAD` days, and its calendar `MONTHS_AHEAD` months, counting the current one. All three
   are in `wrangler.jsonc`.
+
+### When a customer goes quiet
+
+For an approved drop-off where you need to reach the customer (to talk through the price, or
+check they're still coming) and they don't answer. It adds no states of its own: it ends in the
+customer's own cancel or reschedule link, or the No-show button.
+
+- **Whoever approved the drop-off follows up**, so the customer hears from one person. Use the
+  email link on the repair's page or the queue: it copies repairs@, so the others can see each
+  try without asking. A call or text counts if they gave a number; a message there counts if
+  they picked Messenger.
+- **Three tries at most, spread out before the drop-off:**
+  1. When you approve it, or as soon as you know what you need to ask.
+  2. The next day, or at least 24 hours before the drop-off, by another way if they gave one
+     (call or text if the first try was an email).
+  3. The morning of the drop-off, a short email: the time, and that they can cancel or move it
+     with the link in their confirmation email.
+
+  For a drop-off less than a day away, make the first try right away and the last about two
+  hours before.
+- **Silence isn't a cancellation.** Don't cancel or move the drop-off for them; they may just
+  turn up. If they ask to change the time, point them to their link rather than moving the
+  booking yourself, so it happens in one place.
+- **Give up at the drop-off time.** If they haven't come 30 minutes after it, press **No-show**
+  on the repair's page. That takes it out of the queue; their link stops working once the time
+  has passed, so if they come back they send the form again. Don't chase them after that.
 
 ## Setup
 

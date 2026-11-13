@@ -63,6 +63,17 @@ export const timeOf = (env: Env, request: Pick<RequestRow, "slot_start">) => for
 export const customerLink = (origin: string, request: Pick<RequestRow, "customer_token">) =>
 	request.customer_token ? `${origin}/requests/${request.customer_token}` : null;
 
+// A link that starts an email to the customer, with repairs@ copied so the other techs can see who's
+// been in touch, and a subject that says which request it's about, since a customer can have more
+// than one. Everything in it is percent-encoded, as it's customer text going into a URL; only the
+// address's @ is kept as it is, which RFC 6068 allows and mail apps expect. Callers still escape it
+// for HTML, which turns the & between the fields into &amp;.
+const mailto = (env: Env, intake: Intake, time: string) => {
+	const address = (email: string) => encodeURIComponent(email).replaceAll("%40", "@");
+	const subject = `Your repair request: ${what(intake)}, ${time}`;
+	return `mailto:${address(intake.email)}?cc=${address(env.MAIL_TO)}&subject=${encodeURIComponent(subject)}`;
+};
+
 export const send = async (env: Env, mails: Omit<Mail, "from">[]) => {
 	try {
 		await sendMail(env.FASTMAIL_TOKEN, mails.map((mail) => ({ from: env.MAIL_FROM, ...mail })));
@@ -424,11 +435,13 @@ export async function page(env: Env, token: string): Promise<Response> {
 	// any tech can tell what they were told. It's escaped like the rest, though it's our own secret.
 	const address =
 		request.status === "confirmed" ? `<p class="address">${escape(notices.dropOff(env.DROPOFF_ADDRESS))}</p>\n` : "";
+	// Email is the one contact every request has, so following up on a quiet one starts here too.
+	const email = `<p class="call"><a href="${escape(mailto(env, intake, time))}">Email ${escape(intake.name)}: ${escape(intake.email)}</a></p>\n`;
 	return html(
 		title,
 		`<h1>${escape(title)}</h1>
 <p class="state">${escape(state)}</p>
-${rush}${address}${call}<pre>${escape(describe(intake, time))}</pre>
+${rush}${address}${call}${email}<pre>${escape(describe(intake, time))}</pre>
 ${buttons && `<form method="post"><input type="hidden" name="at" value="${request.slot_start}">${buttons}</form>`}
 <p class="mine"><a href="/offers/${offer.token}/queue">Repair queue</a></p>`,
 	);
@@ -467,6 +480,7 @@ export async function queue(env: Env, token: string): Promise<Response> {
 			: intake.messenger
 				? " · Messenger"
 				: "";
+		const email = ` · <a href="${escape(mailto(env, intake, time))}">${escape(intake.email)}</a>`;
 		const title = `${request.rush ? "SAME-DAY " : ""}${escape(what(intake))}`;
 		const approver = request.mine === request.confirmed_by ? "you" : escape(request.approver ?? "another tech");
 		// Without an offer of their own there's no page to press anything on.
@@ -474,7 +488,7 @@ export async function queue(env: Env, token: string): Promise<Response> {
 			? [`<a class="what" href="/offers/${request.mine}">${title}</a>`, ""]
 			: [`<span class="what">${title}</span>`, " · No link for you: it came in before you were added"];
 		return `<li>${heading}<br>
-<span class="details">${details.map(escape).join(" · ")}${call}<br>
+<span class="details">${details.map(escape).join(" · ")}${call}${email}<br>
 Approved by ${approver}${unlinked}</span></li>`;
 	});
 	const count = `${results.length} repair${results.length === 1 ? "" : "s"}`;
