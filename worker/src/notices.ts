@@ -40,8 +40,13 @@ const untagged = (text: string) => text.replaceAll("<", "‹").replaceAll(">", "
 export const holdDescription = (intake: Intake, time: string, link: string) =>
 	`${untagged(describe(intake, time))}\n\nApprove the drop-off or decline it: ${link}`;
 
-export const bookedDescription = (intake: Intake, time: string, tech: string) =>
-	`${untagged(describe(intake, time))}\n\nDrop-off approved by ${tech}. The repair is in the queue for any tech to pick up; whoever does agrees with them when it'll be ready. Delete this event to cancel, and let them know.`;
+// Every tech takes in devices at the same address, which is a secret (DROPOFF_ADDRESS) because the
+// repo is public. The customer's confirmation gives it, and the booking, the other techs' email and
+// the offer page give it in the same words, so any tech can tell what the customer was told.
+export const dropOff = (address: string) => `Drop-off address: ${address}`;
+
+export const bookedDescription = (intake: Intake, time: string, tech: string, address: string) =>
+	`${untagged(describe(intake, time))}\n\n${dropOff(address)}\n\nDrop-off approved by ${tech}. The repair is in the queue for any tech to pick up; whoever does agrees with them when it'll be ready. Delete this event to cancel, and let them know.`;
 
 export const holdSummary = (intake: Intake) => `Request: ${rushed(intake)} (${intake.name})`;
 export const bookedSummary = (intake: Intake) => `Repair: ${rushed(intake)} (${intake.name})`;
@@ -96,15 +101,16 @@ export const failed = (intake: Intake): Message => ({
 });
 
 // Any tech may do the repair, not only the one who approved the drop-off, so "we" say when it's ready.
-export const confirmed = (intake: Intake, time: string, tech: string): Message => ({
+export const confirmed = (intake: Intake, time: string, tech: string, address: string): Message => ({
 	to: intake.email,
 	subject: `Your repair is confirmed: ${what(intake)}, ${time}`,
 	text: [
 		hi(intake),
 		"",
 		`${tech} has confirmed your repair. Drop off your device on ${stop(time)} We'll let you know when it's ready to pick up.`,
+		dropOff(address),
 		...sameDay(intake),
-		"Reply to this email if you need the address or to change anything.",
+		"Reply to this email if you need to change anything.",
 		...yours(intake, time),
 	].join("\n"),
 });
@@ -126,11 +132,11 @@ export const declined = (intake: Intake, time: string): Message => turnedAway(in
 export const expired = (intake: Intake, time: string): Message => turnedAway(intake, time, "couldn't", "could confirm");
 
 // To the other techs and repairs@, so nobody plans around the hold any more, and everyone knows the
-// repair is theirs to pick up too.
-export const taken = (intake: Intake, time: string, to: string, tech: string): Message => ({
+// repair is theirs to pick up too. The address is the one the customer was sent.
+export const taken = (intake: Intake, time: string, to: string, tech: string, address: string): Message => ({
 	to,
 	subject: `Drop-off approved by ${tech}: ${about(intake, time)}`,
-	text: `${tech} approved the drop-off, so any hold for it comes off your calendar. The repair is now in the shared queue for any tech to pick up.\n\n${describe(intake, time)}`,
+	text: `${tech} approved the drop-off, so any hold for it comes off your calendar. The repair is now in the shared queue for any tech to pick up. The customer's confirmation gave them this address:\n\n${dropOff(address)}\n\n${describe(intake, time)}`,
 });
 
 const closed = (intake: Intake, time: string, to: string, subject: string, lead: string): Message => ({

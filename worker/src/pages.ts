@@ -28,6 +28,7 @@ export const html = (title: string, body: string, status = 200) =>
 	button[value="confirm"] { background: var(--accent); color: Canvas; }
 	.call { margin: 0 0 1rem; }
 	.rush { margin: 0 0 1rem; font-weight: 700; }
+	.address { margin: 0 0 1rem; }
 	.mine { margin: 1.5rem 0 0; }
 	.mine a, .queue a { color: var(--accent); }
 	.queue { padding-left: 1.5rem; margin: 0 0 1.5rem; }
