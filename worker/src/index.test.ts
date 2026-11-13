@@ -1594,7 +1594,7 @@ test("a request from before customer links has none in its emails", async () => 
 	mails = [];
 	await press(sam, "confirm");
 	assert.doesNotMatch(text(to("jane@example.com")[0]), /\/requests\/|To cancel or change/);
-	assert.match(text(to("jane@example.com")[0]), /Reply to this email if you need the address or to change anything else\./);
+	assert.match(text(to("jane@example.com")[0]), /Reply to this email if you need to change anything\./);
 });
 
 test("cancelling an open request lets every hold go, tells everyone, and closes it", async () => {
