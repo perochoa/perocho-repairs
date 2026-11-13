@@ -1509,3 +1509,737 @@ test("only a tech still in TECHS can open the queue, whatever links they kept", 
 	// Their link to the one request they were sent still opens.
 	assert.equal((await offerPage(richard)).status, 200);
 });
+
+// The customer's link: cancel or move the drop-off.
+
+const LINK = /https:\/\/intake\.test\/requests\/[0-9a-f-]+/;
+// Jane's own link, from the first email she got that has one.
+const janeLink = () => text(to("jane@example.com").find((mail) => LINK.test(text(mail)))).match(LINK)![0];
+const get = (link: string) => worker.fetch(new Request(link), env);
+const post = (link: string, fields: Record<string, string>) =>
+	worker.fetch(new Request(link, { method: "POST", body: new URLSearchParams(fields) }), env);
+const cancelAt = (link: string) => post(link, { action: "cancel" });
+const moveTo = (link: string, slot: number, from = slotStart) => post(link, { action: "move", slot: String(slot), from: String(from) });
+const timesAt = (link: string, query = "") => get(`${link}/times${query}`);
+const request = () => ({ ...(db.sqlite.prepare("SELECT status, slot_start, slot_end, cancelled FROM requests").get() as any) });
+const declines = () => db.sqlite.prepare("SELECT declined FROM offers ORDER BY position").all().map((row: any) => row.declined);
+// When a worker-made event starts.
+const startOf = (calendarId: string) => calendars[calendarId].filter((e: any) => e.id).map((e: any) => e.start.dateTime);
+// Two hours after slotStart, both techs are free (once Richard's dentist is gone); an hour after,
+// Sam is at the gym.
+const later = slotStart + 2 * hour;
+
+test("the customer's emails link to their own page, which shows the request and changes nothing", async () => {
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	assert.match(text(to("jane@example.com")[0]), new RegExp(`\nTo cancel or change your drop-off time: ${link}\n`));
+	// Nobody else gets it: it's the customer's.
+	for (const address of ["richard@example.com", "sam@example.com", "repairs@perocho.com"]) {
+		assert.doesNotMatch(text(to(address)[0]), /\/requests\//);
+	}
+	assert.doesNotMatch(holds[0].body.description, /\/requests\//);
+
+	const response = await get(link);
+	assert.equal(response.status, 200);
+	assert.equal(
+		response.headers.get("Content-Security-Policy"),
+		"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+	);
+	const body = await response.text();
+	assert.match(body, /Waiting for a tech to confirm/);
+	assert.match(body, /Loud fan/);
+	assert.match(body, new RegExp(`<a href="${new URL(link).pathname}/times">Change the time</a>`));
+	assert.match(body, /<form method="post"><button name="action" value="cancel">Cancel my drop-off<\/button><\/form>/);
+	assert.equal(patched.length + deleted.length, 0);
+	assert.equal(request().cancelled, null);
+
+	// Approved, it says so, and the confirmation links to the same page.
+	const sam = linkFor("sam@example.com");
+	mails = [];
+	await press(sam, "confirm");
+	assert.match(text(to("jane@example.com")[0]), new RegExp(`\nTo cancel or change your drop-off time: ${link}\n`));
+	assert.match(await (await get(link)).text(), /Your drop-off is confirmed.*Sam will be there for it/s);
+});
+
+test("each request gets its own customer link", async () => {
+	await submit({ slot: iso(slotStart) });
+	const jane = janeLink();
+	mails = [];
+	await submit({ slot: iso(slotStart), name: "Bob", email: "bob@example.com" });
+	const bob = text(to("bob@example.com")[0]).match(LINK)![0];
+	assert.notEqual(jane, bob);
+	assert.match(await (await get(bob)).text(), /Name: Bob/);
+});
+
+test("answers an unknown customer link with 404, and changes nothing for a post to one", async () => {
+	const unknown = "https://intake.test/requests/00000000-0000-4000-8000-000000000000";
+	assert.equal((await get(unknown)).status, 404);
+	assert.equal((await timesAt(unknown)).status, 404);
+	const response = await cancelAt(unknown);
+	assert.equal(response.status, 303);
+	assert.deepEqual(fetches, []);
+});
+
+test("escapes what the customer wrote on their page", async () => {
+	await submit({ problem: "<script>alert(1)</script>" });
+	const body = await (await get(janeLink())).text();
+	assert.ok(!body.includes("<script>alert"));
+	assert.match(body, /&lt;script&gt;/);
+});
+
+test("a request from before customer links has none in its emails", async () => {
+	await submit({ slot: iso(slotStart) });
+	db.sqlite.prepare("UPDATE requests SET customer_token = NULL").run();
+	const sam = linkFor("sam@example.com");
+	mails = [];
+	await press(sam, "confirm");
+	assert.doesNotMatch(text(to("jane@example.com")[0]), /\/requests\/|To cancel or change/);
+	assert.match(text(to("jane@example.com")[0]), /Reply to this email if you need the address or to change anything else\./);
+});
+
+test("cancelling an open request lets every hold go, tells everyone, and closes it", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const [richard, sam] = [linkFor("richard@example.com"), linkFor("sam@example.com")];
+	mails = [];
+
+	const response = await cancelAt(link);
+	assert.equal(response.status, 303);
+	assert.equal(response.headers.get("Location"), link);
+	assert.ok(request().cancelled > 0);
+	assert.equal(request().status, "pending");
+	assert.deepEqual(deleted.map((d) => d.calendarId).sort(), ["richard@example.com", "sam@example.com"]);
+	assert.deepEqual(holdIds(), [null, null]);
+	assert.equal(count("stray_events"), 0);
+
+	assert.deepEqual(mails.map((mail) => mail.to[0].email), ["richard@example.com", "sam@example.com", "repairs@perocho.com", "jane@example.com"]);
+	const when = text(to("jane@example.com")[0]).match(/Drop-off time: (.*)/)![1];
+	assert.equal(to("sam@example.com")[0].subject, `Cancelled by the customer: PS5 deep cleaning from Jane, ${when}`);
+	assert.match(text(to("sam@example.com")[0]), /^The customer cancelled their drop-off, so any hold or booking for it comes off your calendar/);
+	assert.match(to("jane@example.com")[0].subject, /^You cancelled your repair request: PS5 deep cleaning/);
+
+	// Their page says so, with nothing left to press, and so do the techs'.
+	const page = await (await get(link)).text();
+	assert.match(page, /You cancelled this request/);
+	assert.ok(!page.includes("<form"));
+	assert.match(page, /href="https:\/\/repairs\.perocho\.com\/request\/">Send the form again/);
+	const techPage = await (await offerPage(sam)).text();
+	assert.match(techPage, /The customer cancelled this request/);
+	assert.ok(!techPage.includes("<form"));
+
+	// Nothing more happens to it: no approve, no decline telling the customer nobody could take it,
+	// no second cancel, and no expiry once its time passes.
+	mails = [];
+	await press(sam, "confirm");
+	await press(richard, "decline");
+	await press(sam, "decline");
+	await cancelAt(link);
+	assert.equal(request().status, "pending");
+	assert.equal(mails.length, 0);
+	assert.equal(holds.length, 2);
+	db.sqlite.prepare("UPDATE requests SET slot_start = ?, slot_end = ?").run(Date.now() - hour, Date.now());
+	await tick();
+	assert.equal(request().status, "pending");
+	assert.equal(mails.length, 0);
+});
+
+test("cancelling an approved drop-off deletes the booking and takes it out of the queue", async () => {
+	const sam = await taken({});
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+	const link = janeLink();
+	mails = [];
+	await cancelAt(link);
+
+	assert.deepEqual(placed("sam@example.com"), []);
+	assert.equal(request().status, "confirmed");
+	assert.deepEqual(mails.map((mail) => mail.to[0].email), ["richard@example.com", "sam@example.com", "repairs@perocho.com", "jane@example.com"]);
+	assert.match(await (await queueOf(sam)).text(), /Nothing in the queue/);
+	assert.match(await (await offerPage(sam)).text(), /The customer cancelled this request/);
+	await press(sam, "done");
+	assert.deepEqual(finished(), { done: null, done_by: null });
+});
+
+test("an approve after the customer cancelled changes nothing", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	await cancelAt(janeLink());
+	const sam = linkFor("sam@example.com");
+	mails = [];
+	await press(sam, "confirm");
+	assert.equal(request().status, "pending");
+	assert.equal(mails.length + patched.length, 0);
+	assert.deepEqual(placed("sam@example.com"), []);
+});
+
+test("an event a cancel couldn't delete is left for the hourly job", async () => {
+	await taken({});
+	await withFailing("DELETE", () => cancelAt(janeLink()));
+	assert.ok(request().cancelled > 0);
+	assert.equal(count("stray_events"), 1);
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+	assert.deepEqual(holdIds(), [null, null]);
+
+	await tick();
+	assert.equal(count("stray_events"), 0);
+	assert.deepEqual(placed("sam@example.com"), []);
+});
+
+test("the hourly job deletes a cancelled request once it's old enough", async () => {
+	await taken({});
+	await cancelAt(janeLink());
+	age(env.RETENTION_DAYS - 1);
+	await tick();
+	assert.equal(count("requests"), 1);
+	age(env.RETENTION_DAYS + 1);
+	await tick();
+	assert.equal(count("requests"), 0);
+	assert.equal(count("offers"), 0);
+});
+
+test("nothing can be cancelled or moved once the time has passed or it's marked done", async () => {
+	await taken({});
+	const link = janeLink();
+	await press(linkFor("sam@example.com"), "done");
+	let page = await (await get(link)).text();
+	assert.match(page, /Your repair is done/);
+	assert.ok(!page.includes("<form") && !page.includes("/times"));
+	mails = [];
+	await cancelAt(link);
+	await moveTo(link, later);
+	assert.equal(request().cancelled, null);
+	assert.equal(request().slot_start, slotStart);
+	assert.equal(mails.length, 0);
+
+	db.sqlite.prepare("UPDATE requests SET done = NULL, slot_start = ?, slot_end = ?").run(Date.now() - hour, Date.now());
+	page = await (await get(link)).text();
+	assert.match(page, /Your drop-off time has passed/);
+	assert.ok(!page.includes("<form"));
+	await cancelAt(link);
+	await moveTo(link, later, Date.now() - hour);
+	assert.equal(request().cancelled, null);
+	assert.equal(mails.length, 0);
+	// The times page sends them back to the request, which says why.
+	const times = await timesAt(link);
+	assert.equal(times.status, 303);
+	assert.equal(times.headers.get("Location"), new URL(link).pathname);
+});
+
+test("a request nobody could take can't be cancelled or moved", async () => {
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	for (const tech of ["richard@example.com", "sam@example.com"]) await press(linkFor(tech), "decline");
+	mails = [];
+	await cancelAt(link);
+	assert.equal(request().cancelled, null);
+	assert.equal(mails.length, 0);
+	assert.match(await (await get(link)).text(), /None of our techs can make that time/);
+});
+
+// The times on a customer's list, as epoch ms.
+const listed = async (link: string, query = "") =>
+	[...(await (await timesAt(link, query)).text()).matchAll(/<option value="(\d+)">/g)].map((match) => Number(match[1]));
+
+test("the list of times has every tech's open times while it's open, and only the approver's once approved", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const open = await listed(link);
+	assert.ok(open.includes(slotStart + quarter));
+	assert.ok(open.includes(slotStart + hour)); // Richard's free while Sam's at the gym
+	assert.ok(open.includes(later));
+	assert.ok(!open.includes(slotStart)); // where it is now
+	assert.equal(patched.length + deleted.length + holds.length, 2); // just the two holds from filing it
+
+	const body = await (await timesAt(link)).text();
+	assert.match(body, /<form method="post" action="\/requests\/[0-9a-f-]+">/);
+	assert.match(body, new RegExp(`<input type="hidden" name="from" value="${slotStart}">`));
+	assert.match(body, /<optgroup label="\w{3}, \w{3} \d+">/);
+	assert.match(body, /Moving it asks our techs again/);
+
+	await press(linkFor("sam@example.com"), "confirm");
+	const approved = await listed(link);
+	assert.ok(!approved.includes(slotStart + hour)); // Sam's at the gym
+	assert.ok(approved.includes(later));
+	assert.match(await (await timesAt(link)).text(), /so it stays confirmed/);
+});
+
+test("the list of times keeps to the lead time and the booking window, and shows a month asked for", async () => {
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const open = await listed(link);
+	assert.ok(open.length > 0);
+	assert.ok(open.every((start) => start >= Date.now() + env.LEAD_HOURS * hour));
+	const month = await listed(link, `?month=${monthOf(slotStart)}`);
+	assert.ok(month.every((start) => monthOf(start) === monthOf(slotStart)));
+	assert.ok(month.includes(slotStart + quarter));
+	assert.equal((await timesAt(link, `?month=${monthAhead(12)}`)).status, 400);
+	assert.match(await (await timesAt(link)).text(), new RegExp(`<a href="\\?month=${monthAhead(1)}">`));
+});
+
+test("the list of times is limited like /slots", async () => {
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	slotsAllowed = 0;
+	fetches = [];
+	const response = await quietly(() => timesAt(link));
+	assert.equal(response.status, 429);
+	assert.deepEqual(fetches, []);
+});
+
+test("moving an open request holds the new time, lets the old holds go, and asks every tech again", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const [richard, sam] = [linkFor("richard@example.com"), linkFor("sam@example.com")];
+	await press(richard, "decline");
+	assert.deepEqual(declines(), [1, 0]);
+	mails = [];
+	deleted = [];
+
+	const response = await moveTo(link, later);
+	assert.equal(response.status, 303);
+	assert.equal(response.headers.get("Location"), link);
+	assert.deepEqual(request(), { status: "pending", slot_start: later, slot_end: later + quarter, cancelled: null });
+	// Both are free then, so both hold it, Richard too now; Sam's old hold is gone.
+	assert.deepEqual(startOf("richard@example.com"), [iso(later)]);
+	assert.deepEqual(startOf("sam@example.com"), [iso(later)]);
+	assert.deepEqual(deleted, [{ calendarId: "sam@example.com", eventId: "hold2" }]);
+	assert.deepEqual(declines(), [0, 0]);
+	assert.equal(count("stray_events"), 0);
+	const moved = holds.slice(-2);
+	assert.ok(moved.every((hold) => hold.body.status === "tentative" && hold.body.summary === "Request: PS5 deep cleaning (Jane)"));
+	assert.match(moved.find((hold) => hold.calendarId === "sam@example.com")!.body.description, new RegExp(`Approve the drop-off or decline it: ${sam}$`));
+
+	assert.deepEqual(mails.map((mail) => mail.to[0].email), ["richard@example.com", "sam@example.com", "repairs@perocho.com", "jane@example.com"]);
+	const when = text(to("jane@example.com")[0]).match(/Drop-off time: (.*)/)![1];
+	assert.equal(to("richard@example.com")[0].subject, `Drop-off moved: PS5 deep cleaning from Jane, ${when}`);
+	assert.deepEqual(to("richard@example.com")[0].replyTo, [{ email: "jane@example.com" }]);
+	assert.match(text(to("richard@example.com")[0]), new RegExp(`^The customer moved their drop-off from .* to ${when.replace(/[.]/g, "\\.")}\\.?\nIt's open again for every tech, those who declined the old time too\\.\nApprove the drop-off or decline it: ${richard}\nIt's on your calendar as a tentative hold`));
+	assert.doesNotMatch(text(to("repairs@perocho.com")[0]), /offers/);
+	assert.match(text(to("repairs@perocho.com")[0]), /It's open again for every tech\.\nHeld on: Richard, Sam \(tentative\)/);
+	assert.match(to("jane@example.com")[0].subject, /^Your drop-off is now /);
+	assert.match(text(to("jane@example.com")[0]), new RegExp(`We'll email you again when a tech confirms it\\..*\nTo cancel or change your drop-off time: ${link}\n`, "s"));
+
+	// The techs' pages and the customer's show the new time, and approving it books that.
+	assert.match(await (await offerPage(richard)).text(), /New repair request/);
+	assert.match(await (await get(link)).text(), new RegExp(`Drop-off time: ${when}`));
+	mails = [];
+	await press(richard, "confirm");
+	assert.equal(request().status, "confirmed");
+	assert.deepEqual(placed("richard@example.com"), ["confirmed"]);
+	assert.deepEqual(startOf("richard@example.com"), [iso(later)]);
+	assert.deepEqual(placed("sam@example.com"), []);
+	assert.match(to("jane@example.com")[0].subject, new RegExp(`^Your repair is confirmed: PS5 deep cleaning, ${when}`));
+});
+
+test("moving an approved drop-off moves the approver's booking", async () => {
+	const sam = await taken({}); // Richard's busy, so only Sam held it
+	const link = janeLink();
+	const [booking] = calendars["sam@example.com"].filter((e: any) => e.id).map((e: any) => e.id);
+	mails = [];
+	await moveTo(link, later);
+
+	assert.deepEqual(request(), { status: "confirmed", slot_start: later, slot_end: later + quarter, cancelled: null });
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+	assert.deepEqual(startOf("sam@example.com"), [iso(later)]);
+	assert.ok(deleted.some((d) => d.eventId === booking));
+	assert.deepEqual(placed("richard@example.com"), []);
+	assert.match(holds.at(-1)!.body.summary, /^Repair: PS5 deep cleaning \(Jane\)/);
+	assert.match(holds.at(-1)!.body.description, /Drop-off approved by Sam\./);
+
+	assert.deepEqual(mails.map((mail) => mail.to[0].email), ["richard@example.com", "sam@example.com", "repairs@perocho.com", "jane@example.com"]);
+	assert.match(text(to("sam@example.com")[0]), /\nIt's still Sam's drop-off, and the booking on their calendar moved with it\.\n/);
+	assert.match(text(to("jane@example.com")[0]), /Sam will be there for it, so there's nothing more to confirm\./);
+	// Still in the queue, at its new time, and the hourly job leaves the new booking alone.
+	assert.deepEqual(await queued(sam), [[tokenOf(sam), "you"]]);
+	await tick();
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+
+	// And it moves again, and can be cancelled from there.
+	await moveTo(link, later + quarter, later);
+	assert.deepEqual(startOf("sam@example.com"), [iso(later + quarter)]);
+	await cancelAt(link);
+	assert.deepEqual(placed("sam@example.com"), []);
+});
+
+test("a time that isn't open sends them back to the list, changing nothing", async () => {
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	mails = [];
+	const soon = Math.ceil((Date.now() + hour) / quarter) * quarter; // inside the lead time
+	for (const slot of [slotStart + hour, soon, Date.now() + 400 * 24 * hour, slotStart]) {
+		const response = await moveTo(link, slot);
+		assert.equal(response.headers.get("Location"), `${link}/times?closed`, iso(slot));
+	}
+	assert.equal(request().slot_start, slotStart);
+	assert.equal(holds.length, 1);
+	assert.equal(mails.length + deleted.length, 0);
+	assert.match(await (await timesAt(link, "?closed")).text(), /That time isn&#39;t open any more/);
+});
+
+test("moves are limited like the form", async () => {
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	allowed = 0;
+	limitKeys = [];
+	fetches = [];
+	const response = await quietly(() =>
+		worker.fetch(
+			new Request(link, { method: "POST", body: new URLSearchParams({ action: "move", slot: String(later), from: String(slotStart) }), headers: { "CF-Connecting-IP": "203.0.113.7" } }),
+			env,
+		),
+	);
+	assert.equal(response.headers.get("Location"), `${link}/times?busy`);
+	assert.deepEqual(limitKeys, ["203.0.113.7"]);
+	assert.deepEqual(fetches, []);
+	assert.equal(request().slot_start, slotStart);
+});
+
+test("a list of times left open across another move changes nothing", async () => {
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	await moveTo(link, later);
+	mails = [];
+	const made = holds.length;
+	const response = await moveTo(link, later + quarter); // from slotStart, which it no longer is
+	assert.equal(response.headers.get("Location"), link);
+	assert.equal(request().slot_start, later);
+	assert.equal(holds.length, made);
+	assert.equal(mails.length, 0);
+});
+
+test("a move that couldn't hold the new time anywhere changes nothing", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	mails = [];
+	let response!: Response;
+	await withFailing("POST", async () => (response = await moveTo(link, later)));
+	assert.equal(response.status, 500);
+	assert.match(await response.text(), /nothing changed/);
+	assert.equal(request().slot_start, slotStart);
+	assert.deepEqual(holdIds(), ["hold1", "hold2"]);
+	assert.equal(mails.length, 0);
+});
+
+test("an old hold a move couldn't delete is left for the hourly job", async () => {
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	await withFailing("DELETE", () => moveTo(link, later));
+	assert.equal(request().slot_start, later);
+	assert.equal(count("stray_events"), 1);
+	assert.deepEqual(startOf("sam@example.com").sort(), [iso(slotStart), iso(later)].sort());
+	await tick();
+	assert.equal(count("stray_events"), 0);
+	assert.deepEqual(startOf("sam@example.com"), [iso(later)]);
+});
+
+// The races. Holds the first D1 batch until `resume`; `reached` settles once one is waiting.
+const pausingBatch = () => {
+	const batch = db.batch;
+	let resume!: () => void;
+	let arrive!: () => void;
+	const paused = new Promise<void>((resolve) => (resume = resolve));
+	const reached = new Promise<void>((resolve) => (arrive = resolve));
+	db.batch = async (statements) => {
+		db.batch = batch;
+		arrive();
+		await paused;
+		return batch(statements);
+	};
+	return { reached, resume };
+};
+
+// Holds Google's `method` requests on `calendarId` until `resume`, as pausingDelete does deletes.
+const pausing = (method: string, calendarId: string) => {
+	const fake = globalThis.fetch;
+	let resume!: () => void;
+	let arrive!: () => void;
+	const paused = new Promise<void>((resolve) => (resume = resolve));
+	const reached = new Promise<void>((resolve) => (arrive = resolve));
+	globalThis.fetch = async (input, init) => {
+		if (init?.method === method && String(input).includes(`/calendars/${encodeURIComponent(calendarId)}/`)) {
+			arrive();
+			await paused;
+		}
+		return fake(input, init);
+	};
+	return { reached, resume, restore: () => (globalThis.fetch = fake) };
+};
+
+test("a cancel while a tech is approving: the booking goes, and the customer isn't told it's confirmed", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const sam = linkFor("sam@example.com");
+	mails = [];
+
+	// The approve has won and is turning Sam's hold into the booking when the customer cancels.
+	const google = pausing("PATCH", "sam@example.com");
+	const confirming = press(sam, "confirm");
+	await google.reached;
+	await cancelAt(link);
+	google.resume();
+	await confirming;
+	google.restore();
+
+	assert.ok(request().cancelled > 0);
+	assert.deepEqual(placed("sam@example.com"), []);
+	assert.deepEqual(placed("richard@example.com"), []);
+	assert.deepEqual(holdIds(), [null, null]);
+	assert.deepEqual(to("jane@example.com").map((mail) => mail.subject.split(":")[0]), ["You cancelled your repair request"]);
+	assert.equal(mails.filter((mail) => /^Drop-off approved/.test(mail.subject)).length, 0);
+	assert.match(await (await queueOf(sam)).text(), /Nothing in the queue/);
+});
+
+test("an approve of the time a tech's page showed does nothing once the customer has moved it", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const sam = linkFor("sam@example.com");
+	assert.match(await (await offerPage(sam)).text(), new RegExp(`<input type="hidden" name="at" value="${slotStart}">`));
+	await moveTo(link, later);
+	mails = [];
+	await post(sam, { action: "confirm", at: String(slotStart) });
+	assert.equal(request().status, "pending");
+	assert.equal(mails.length, 0);
+	// From the page as it is now, it goes through.
+	await post(sam, { action: "confirm", at: String(later) });
+	assert.equal(request().status, "confirmed");
+	assert.deepEqual(startOf("sam@example.com"), [iso(later)]);
+});
+
+test("an approve that wins while a move is holding the new time keeps the old time, and the move lets its holds go", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const sam = linkFor("sam@example.com");
+
+	const google = pausing("POST", "sam@example.com");
+	const moving = moveTo(link, later);
+	await google.reached;
+	mails = [];
+	await press(sam, "confirm");
+	google.resume();
+	const response = await moving;
+	google.restore();
+
+	assert.equal(response.headers.get("Location"), link);
+	assert.deepEqual(request(), { status: "confirmed", slot_start: slotStart, slot_end: slotStart + quarter, cancelled: null });
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+	assert.deepEqual(startOf("sam@example.com"), [iso(slotStart)]);
+	assert.deepEqual(placed("richard@example.com"), []);
+	assert.equal(count("stray_events"), 0);
+	assert.equal(mails.filter((mail) => /^Drop-off moved|^Your drop-off is now/.test(mail.subject)).length, 0);
+	assert.match(to("jane@example.com")[0].subject, /^Your repair is confirmed/);
+});
+
+test("an approve loaded before a move wins at the new time, and books it there", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const sam = linkFor("sam@example.com");
+
+	// The approve has loaded the request, then waits while the customer moves it.
+	let resume!: () => void;
+	const paused = new Promise<void>((resolve) => (resume = resolve));
+	const prepare = db.prepare;
+	db.prepare = (sql: string) => {
+		const statement = prepare(sql);
+		if (!sql.startsWith("UPDATE requests SET status = 'confirmed'")) return statement;
+		return {
+			...statement,
+			bind: (...values: any[]) => {
+				const bound = statement.bind(...values);
+				return { ...bound, run: async () => (await paused, bound.run()) };
+			},
+		};
+	};
+	const confirming = press(sam, "confirm");
+	await moveTo(link, later);
+	mails = [];
+	resume();
+	await confirming;
+	db.prepare = prepare;
+
+	assert.equal(request().status, "confirmed");
+	assert.deepEqual(placed("sam@example.com"), ["confirmed"]);
+	assert.deepEqual(startOf("sam@example.com"), [iso(later)]);
+	assert.deepEqual(placed("richard@example.com"), []);
+	const when = text(to("jane@example.com")[0]).match(/Drop-off time: (.*)/)![1];
+	assert.match(to("jane@example.com")[0].subject, new RegExp(`^Your repair is confirmed: PS5 deep cleaning, ${when}$`));
+	assert.notEqual(when, text(to("richard@example.com")[0]).match(/from (.*) to/)?.[1]);
+});
+
+test("a move the hourly job expired first changes nothing, and lets its new holds go", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+
+	// The move has its new holds and is about to record them when the old time passes and the
+	// hourly job expires the request.
+	const batch = pausingBatch();
+	const moving = moveTo(link, later);
+	await batch.reached;
+	db.sqlite.prepare("UPDATE requests SET slot_start = ?, slot_end = ?").run(Date.now() - hour, Date.now());
+	mails = [];
+	await tick();
+	assert.equal(request().status, "expired");
+	batch.resume();
+	const response = await moving;
+
+	assert.equal(response.headers.get("Location"), link);
+	assert.equal(request().status, "expired");
+	assert.ok(request().slot_start < Date.now());
+	assert.deepEqual(placed("sam@example.com"), []);
+	assert.deepEqual(placed("richard@example.com"), []);
+	assert.deepEqual(mails.map((mail) => mail.to[0].email), ["jane@example.com", "repairs@perocho.com"]);
+	assert.match(to("jane@example.com")[0].subject, /^We couldn't take your repair request/);
+});
+
+test("a move the hourly job runs after leaves the moved request open", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	await moveTo(janeLink(), later);
+	mails = [];
+	deleted = [];
+	await tick();
+	assert.equal(request().status, "pending");
+	assert.equal(mails.length + deleted.length, 0);
+	assert.deepEqual(startOf("sam@example.com"), [iso(later)]);
+});
+
+test("a cancel in another tab while a move is holding the new time: it's cancelled, and nothing is left", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const batch = pausingBatch();
+	const moving = moveTo(link, later);
+	await batch.reached;
+	mails = [];
+	await cancelAt(link);
+	batch.resume();
+	await moving;
+
+	assert.ok(request().cancelled > 0);
+	assert.equal(request().slot_start, slotStart);
+	assert.deepEqual(placed("sam@example.com"), []);
+	assert.deepEqual(placed("richard@example.com"), []);
+	assert.equal(count("stray_events"), 0);
+	assert.equal(mails.filter((mail) => /moved|now/.test(mail.subject)).length, 0);
+});
+
+test("two moves at once: exactly one goes through", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	mails = [];
+	await Promise.all([moveTo(link, later), moveTo(link, later + quarter)]);
+	const { slot_start } = request();
+	assert.ok(slot_start === later || slot_start === later + quarter);
+	assert.deepEqual(startOf("sam@example.com"), [iso(slot_start)]);
+	assert.deepEqual(startOf("richard@example.com"), [iso(slot_start)]);
+	assert.equal(to("jane@example.com").length, 1);
+});
+
+test("a move overtaken by another tab's move changes nothing, and lets its holds go", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	// The first move has its holds at `later` and waits to record them; the second goes all the way.
+	const batch = pausingBatch();
+	const first = moveTo(link, later);
+	await batch.reached;
+	await moveTo(link, later + quarter);
+	mails = [];
+	batch.resume();
+	const response = await first;
+
+	assert.equal(response.headers.get("Location"), link);
+	assert.equal(request().slot_start, later + quarter);
+	assert.deepEqual(startOf("sam@example.com"), [iso(later + quarter)]);
+	assert.deepEqual(startOf("richard@example.com"), [iso(later + quarter)]);
+	assert.equal(count("stray_events"), 0);
+	assert.equal(mails.length, 0);
+});
+
+test("a declined tech's hold whose delete fails once a move asked them again goes to the hourly job", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const richard = linkFor("richard@example.com");
+	// Richard declines; his hold's delete is under way when the customer moves the drop-off, then
+	// fails. Google is failing deletes for the move too, so Sam's old hold waits as well.
+	const restore = failing("DELETE");
+	const google = pausing("DELETE", "richard@example.com");
+	const original = console.error;
+	console.error = () => {};
+	const declining = press(richard, "decline");
+	await google.reached;
+	await moveTo(link, later);
+	google.resume();
+	await declining;
+	google.restore();
+	restore();
+	console.error = original;
+
+	// His offer has the new hold, not the old one put back, and the old one waits for the job.
+	assert.deepEqual(declines(), [0, 0]);
+	assert.deepEqual(startOf("richard@example.com").sort(), [iso(slotStart), iso(later)].sort());
+	assert.equal(count("stray_events"), 2);
+	await tick();
+	assert.equal(count("stray_events"), 0);
+	assert.deepEqual(startOf("richard@example.com"), [iso(later)]);
+	assert.deepEqual(startOf("sam@example.com"), [iso(later)]);
+	await press(richard, "confirm");
+	assert.deepEqual(startOf("richard@example.com"), [iso(later)]);
+	assert.deepEqual(placed("richard@example.com"), ["confirmed"]);
+});
+
+test("a declined tech's old hold isn't put back on their offer once a move asked them again", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const link = janeLink();
+	const richard = linkFor("richard@example.com");
+	// Richard is busy at the new time, so the move gives him no hold of his own.
+	calendars["richard@example.com"].push({ summary: "Busy", start: { dateTime: iso(later) }, end: { dateTime: iso(later + hour) } });
+	const restore = failing("DELETE");
+	const google = pausing("DELETE", "richard@example.com");
+	const original = console.error;
+	console.error = () => {};
+	const declining = press(richard, "decline");
+	await google.reached;
+	await moveTo(link, later);
+	google.resume();
+	await declining;
+	google.restore();
+	restore();
+	console.error = original;
+
+	// Put back, the old hold would sit on an open offer, which nothing deletes and an approve books.
+	assert.deepEqual(holdIds()[0], null);
+	assert.deepEqual(declines(), [0, 0]);
+	await tick();
+	assert.deepEqual(startOf("richard@example.com"), []);
+	await press(richard, "confirm");
+	assert.deepEqual(startOf("richard@example.com"), [iso(later)]);
+});
+
+test("the customer link migration adds its columns and table to the rows already there", () => {
+	const sqlite = new DatabaseSync(":memory:");
+	const migrations = `${import.meta.dirname}/../migrations`;
+	const files = readdirSync(migrations).sort();
+	const run = (file: string) => sqlite.exec(readFileSync(`${migrations}/${file}`, "utf8"));
+	const at = files.indexOf("0006_customer_link.sql");
+	files.slice(0, at).forEach(run);
+	sqlite.prepare("INSERT INTO requests (id, created, intake, slot_start, slot_end, status) VALUES ('old', 0, '{}', 1, 2, 'confirmed')").run();
+	run(files[at]);
+	assert.deepEqual({ ...sqlite.prepare("SELECT status, customer_token, cancelled FROM requests").get() }, { status: "confirmed", customer_token: null, cancelled: null });
+	// Any number of requests without a link, but never two with the same one.
+	sqlite.prepare("INSERT INTO requests (id, created, intake, slot_start, slot_end) VALUES ('older', 0, '{}', 1, 2)").run();
+	sqlite.prepare("INSERT INTO requests (id, created, intake, slot_start, slot_end, customer_token) VALUES ('new', 0, '{}', 1, 2, 't')").run();
+	assert.throws(() => sqlite.prepare("INSERT INTO requests (id, created, intake, slot_start, slot_end, customer_token) VALUES ('dup', 0, '{}', 1, 2, 't')").run());
+	sqlite.prepare("INSERT INTO stray_events (calendar_id, event_id) VALUES ('c', 'e')").run();
+	assert.throws(() => sqlite.prepare("INSERT INTO stray_events (calendar_id, event_id) VALUES ('c', 'e')").run());
+});
