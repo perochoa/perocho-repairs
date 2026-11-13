@@ -4,7 +4,8 @@ A Cloudflare Worker behind the site's repair request form (`/request/`). It read
 Google Calendar to offer open drop-off times, and offers each request to every tech by email,
 with a tentative hold on the calendar of every tech free at the picked time. The first tech to
 approve the drop-off gets the device at that time, the repair goes in one queue all the techs
-share, and the customer is emailed at each step. Repairs are drop-off only: the picked time is
+share, and the customer is emailed at each step, with a link of their own to cancel the drop-off
+or move it to another open time. Repairs are drop-off only: the picked time is
 when the customer brings the device in. When it'll be ready is up to the tech who does the
 repair and the customer. A time and an email are required. A second way to reach them is
 optional: a phone number (the form says it's only for updates: no spam, no cold calls) or
@@ -60,8 +61,23 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
     declining the repair: you can still pick it up from the queue.
   - **Nobody approves it in time:** once the picked time starts it can't be approved, and within
     the hour it expires: any holds are deleted and the customer is told nobody could take it.
-- **To cancel or move a drop-off**, the tech who approved it changes or deletes the booking and
-  emails the customer.
+- **To cancel or move a drop-off**, the customer uses the link in their "received" and
+  "confirmed" emails. Their page shows where the request stands. It has a button to cancel and a
+  list of open times to move to, worked out the same way as on the form (same lead time). Opening
+  the page changes nothing; only the buttons do. They can do either until the drop-off time has
+  passed or the repair is marked done.
+  - **Cancel:** every hold and the booking come off the calendars, it leaves the queue, and every
+    tech and `repairs@perocho.com` are emailed. Your page for it then says the customer cancelled
+    it, with nothing to press.
+  - **Move, while nobody has approved it:** it's offered again at the new time. Every tech free
+    then gets a hold, the old holds go, and a tech who declined the old time is asked again. Every
+    tech is emailed the new time with their link. If your page was open from before the move,
+    pressing approve there changes nothing; reload it to see the new time.
+  - **Move, once approved:** the list only has times when the tech who approved it can take it.
+    Their booking moves to the new time, and everyone is emailed.
+  - **When you need to change the time**, ask the customer to use their link. Moving a drop-off
+    only happens there. Deleting or dragging the event on your calendar doesn't change the request
+    or tell anyone.
 - **The repair queue is shared.** The "Repair queue" link at the bottom of any of your request
   pages shows every approved repair not marked done yet, same-day first, then by drop-off time, each
   with who approved it (the device comes to them), the customer's number and a link to its
@@ -77,7 +93,8 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
   queue and on the offer page, with the fee the customer was told (a range if they didn't pick a
   service), paid in person with the repair; nothing is charged online.
 - **The customer gets an email** when the request comes in, when a tech approves the drop-off,
-  when every tech declines or it expires, and if it failed to go through.
+  when every tech declines or it expires, if it failed to go through, and when they cancel or
+  move it themselves.
 - If the emails fail to send, the customer still lands on "sent" when a hold was made, so check
   the calendar too: the hold has everything the email would have, including your link.
 - Times are offered from `LEAD_HOURS` hours ahead. The form's row of days shows the next
@@ -209,9 +226,11 @@ until the deploy finishes.
 
 Requests, with the customer's name, email, phone and what they wrote, are kept in D1 while
 they're in use. The hourly job deletes a request and its offers `RETENTION_DAYS` days after its
-drop-off time once it's settled: declined by every tech, expired, or marked done. A repair that's
-approved but not marked done stays until it is, so it never drops out of the queue. One with a
-calendar hold the job hasn't managed to delete yet stays until the hold is gone. The emails and
+drop-off time once it's settled: declined by every tech, expired, cancelled by the customer, or
+marked done. A repair that's approved but not marked done stays until it is, so it never drops out
+of the queue. One with a calendar hold the job hasn't managed to delete yet stays until the hold is
+gone. Events a cancel or a move couldn't delete at the time are kept apart (`stray_events`, just
+calendar and event IDs), so they don't hold up the request; the hourly job deletes them. The emails and
 calendar events about it aren't touched. `RETENTION_DAYS` is in `wrangler.jsonc`; change it
 there, then `npm run types` and deploy.
 
@@ -239,3 +258,8 @@ Two defences, neither needing JS:
   through the calendar's months fetches each one. Past it the worker answers 429, and the form
   says it couldn't load the times and points people to Messenger and email. These show up as
   `rate limited /slots`.
+
+  A customer's list of times to move to reads the calendars too, so it counts against
+  `SLOTS_LIMITER` (`rate limited a customer's times`). A move emails every tech, so it counts
+  against `REQUEST_LIMITER` like a form post (`rate limited a move`). Past it, the list of times
+  asks them to wait a minute.
