@@ -9,9 +9,9 @@
 import { clear, sweep } from "./calendar.ts";
 import { type Mail, sendMail } from "./fastmail.ts";
 import { accessToken, bookEvent, createEvent, deleteEvent } from "./google.ts";
-import { describe, dialable, formatTime, type Intake, sameDayFee, stop, what } from "./intake.ts";
+import { dialable, formatTime, type Intake, sameDayFee, stop, what } from "./intake.ts";
 import * as notices from "./notices.ts";
-import { escape, html } from "./pages.ts";
+import { escape, html, message, request as details } from "./pages.ts";
 import { parseTechs } from "./techs.ts";
 
 export interface RequestRow {
@@ -416,7 +416,7 @@ function view({ offer, request, offers, intake }: Loaded, time: string): [string
 
 export async function page(env: Env, token: string): Promise<Response> {
 	const loaded = await load(env.DB, token);
-	if (!loaded) return html("Request not found", "<h1>Request not found</h1><p>This link doesn't match a request.</p>", 404);
+	if (!loaded) return message("Request not found", "This link doesn't match a request.", 404);
 	const { offer, request, intake } = loaded;
 	const time = timeOf(env, request);
 
@@ -439,10 +439,11 @@ export async function page(env: Env, token: string): Promise<Response> {
 	const email = `<p class="call"><a href="${escape(mailto(env, intake, time))}">Email ${escape(intake.name)}: ${escape(intake.email)}</a></p>\n`;
 	return html(
 		title,
-		`<h1>${escape(title)}</h1>
+		`<p class="eyebrow">Repair request</p>
+<h1>${escape(title)}</h1>
 <p class="state">${escape(state)}</p>
-${rush}${address}${call}${email}<pre>${escape(describe(intake, time))}</pre>
-${buttons && `<form method="post"><input type="hidden" name="at" value="${request.slot_start}">${buttons}</form>`}
+${rush}${buttons && `<form method="post" class="actions"><input type="hidden" name="at" value="${request.slot_start}">${buttons}</form>\n`}${address}<div class="contacts">${call}${email}</div>
+${details(`From ${intake.name}`, intake, time)}
 <p class="mine"><a href="/offers/${offer.token}/queue">Repair queue</a></p>`,
 	);
 }
@@ -466,7 +467,7 @@ export async function queue(env: Env, token: string): Promise<Response> {
 	// Links outlive a tech's place in TECHS, and the queue shows every customer, so only a tech still
 	// on the list may open it. A removed tech's old link answers like an unknown one.
 	const current = offer && parseTechs(env.TECHS).some((tech) => tech.calendarId === offer.calendar_id);
-	if (!offer || !current) return html("Queue not found", "<h1>Queue not found</h1><p>This link doesn't match a request.</p>", 404);
+	if (!offer || !current) return message("Queue not found", "This link doesn't match a request.", 404);
 	const { results } = await env.DB.prepare(QUEUE_SQL).bind(offer.calendar_id).all<Queued>();
 
 	const items = results.map((request) => {
@@ -494,7 +495,8 @@ Approved by ${approver}${unlinked}</span></li>`;
 	const count = `${results.length} repair${results.length === 1 ? "" : "s"}`;
 	return html(
 		"Repair queue",
-		`<h1>Repair queue</h1>
+		`<p class="eyebrow">For techs</p>
+<h1>Repair queue</h1>
 ${
 	items.length > 0
 		? `<p class="state">${count} approved and not marked done or a no-show, for any tech to pick up: same-day first, then by drop-off time. Whoever does one marks it done on its page.</p>

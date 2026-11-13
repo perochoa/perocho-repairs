@@ -12,10 +12,10 @@
 
 import { clear, findSlots, hold, type StrayEvent } from "./calendar.ts";
 import { accessToken, createEvent } from "./google.ts";
-import { describe, formatTime, type Intake, stop } from "./intake.ts";
+import { formatTime, type Intake, stop } from "./intake.ts";
 import * as notices from "./notices.ts";
 import { customerLink, type OfferRow, type RequestRow, send, timeOf } from "./offers.ts";
-import { escape, html } from "./pages.ts";
+import { escape, html, message, request as details } from "./pages.ts";
 import { horizon, monthWindow, rowEnd, type Slot, zonedFormat } from "./slots.ts";
 
 async function load(db: D1Database, token: string) {
@@ -218,7 +218,7 @@ export async function act(env: Env, token: string, form: FormData | null, origin
 	return here;
 }
 
-const notFound = () => html("Request not found", "<h1>Request not found</h1><p>This link doesn't match a request.</p>", 404);
+const notFound = () => message("Request not found", "This link doesn't match a request.", 404);
 
 // What their link says for where the request stands, and whether they can still change it.
 function view({ request, offers }: Loaded, time: string): [string, string] {
@@ -238,6 +238,18 @@ function view({ request, offers }: Loaded, time: string): [string, string] {
 	return ["Waiting for a tech to confirm", `We'll email you when one of our techs confirms your drop-off for ${stop(time)} Nothing is booked until then.`];
 }
 
+// How far along a request still on its way is: sent, then confirmed, then done. One that ended
+// another way has its page say so, and shows none.
+function progress(request: RequestRow) {
+	const closed = request.cancelled !== null || request.no_show !== null || request.status === "declined" || request.status === "expired";
+	if (closed || (request.status === "pending" && request.slot_start <= Date.now())) return "";
+	const reached = request.done !== null ? 2 : request.status === "confirmed" ? 1 : 0;
+	const steps = ["Sent", "Confirmed", "Done"].map(
+		(step, i) => `<li${i <= reached ? ' class="reached"' : ""}${i === reached ? ' aria-current="step"' : ""}>${step}</li>`,
+	);
+	return `<ol class="progress" aria-label="Where your request is">${steps.join("")}</ol>\n`;
+}
+
 export async function page(env: Env, token: string): Promise<Response> {
 	const loaded = await load(env.DB, token);
 	if (!loaded) return notFound();
@@ -245,31 +257,36 @@ export async function page(env: Env, token: string): Promise<Response> {
 	const time = timeOf(env, request);
 	const [title, state] = view(loaded, time);
 	const actions = changeable(request)
-		? `<p class="mine"><a href="/requests/${token}/times">Change the time</a></p>
-<form method="post"><button name="action" value="cancel">Cancel my drop-off</button></form>
+		? `<div class="actions"><a class="button primary" href="/requests/${token}/times">Change the time</a>
+<form method="post"><button name="action" value="cancel">Cancel my drop-off</button></form></div>
 <p class="note">Cancelling can't be undone; send the form again to book another time.</p>`
-		: `<p class="mine"><a href="${escape(env.SITE_URL)}/request/">Send the form again</a></p>`;
+		: `<div class="actions"><a class="button primary" href="${escape(env.SITE_URL)}/request/">Send the form again</a></div>`;
 	return html(
 		title,
-		`<h1>${escape(title)}</h1>
+		`<p class="eyebrow">Your repair request</p>
+<h1>${escape(title)}</h1>
 <p class="state">${escape(state)}</p>
-<pre>${escape(describe(intake, time))}</pre>
-${actions}`,
+${progress(request)}${actions}
+${details("What you sent us", intake, time)}`,
 	);
 }
 
-const dayFormat = zonedFormat("en-CA", { weekday: "short", month: "short", day: "numeric" });
+const dayFormat = zonedFormat("en-CA", { weekday: "long", month: "long", day: "numeric" });
+const weekdayFormat = zonedFormat("en-CA", { weekday: "short" });
+const dateFormat = zonedFormat("en-CA", { day: "numeric" });
+const shortMonthFormat = zonedFormat("en-CA", { month: "short" });
 const hourFormat = zonedFormat("en-CA", { hour: "numeric", minute: "2-digit" });
 const monthFormat = zonedFormat("en-CA", { year: "numeric", month: "2-digit" });
 
-// The months of the booking window after the form's row of days, as links to their times.
-function months(env: Env, now: number) {
+// The months of the booking window after the form's row of days, as links to their times, with the
+// one showing marked.
+function months(env: Env, now: number, showing: string | null) {
 	const [year, month] = monthFormat(env.TIME_ZONE).format(now).split("-").map(Number);
 	return Array.from({ length: env.MONTHS_AHEAD }, (_, i) => {
 		const middle = Date.UTC(year, month - 1 + i, 15);
 		const value = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit" }).format(middle);
 		const label = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "short" }).format(middle);
-		return `<a href="?month=${value}">${escape(label)}</a>`;
+		return `<a href="?month=${value}"${value === showing ? ' aria-current="page"' : ""}>${escape(label)}</a>`;
 	});
 }
 
@@ -285,48 +302,69 @@ export async function times(env: Env, token: string, params: URLSearchParams, ip
 	const { success } = await env.SLOTS_LIMITER.limit({ key: ip ?? "unknown" });
 	if (!success) {
 		console.warn("rate limited a customer's times");
-		return html("Too many tries", "<h1>Too many tries</h1><p>Wait a minute, then reload this page.</p>", 429);
+		return message("Too many tries", "Wait a minute, then reload this page.", 429);
 	}
 	const now = Date.now();
 	const month = params.get("month");
 	const window = month === null ? { from: now, to: rowEnd(now, env.DAYS_AHEAD, env.TIME_ZONE) } : monthWindow(month, now, env.MONTHS_AHEAD, env.TIME_ZONE);
-	if (!window) return html("No such month", "<h1>No such month</h1><p>Pick one of the months on the list of times.</p>", 400);
+	if (!window) return message("No such month", "Pick one of the months on the list of times.", 400);
 	const techs = takers(loaded).map((offer) => ({ name: offer.name, calendarId: offer.calendar_id, email: offer.email }));
 	const open = techs.length === 0 ? [] : (await findSlots(env, await accessToken(env.GOOGLE_SERVICE_ACCOUNT), techs, window.from, window.to)).filter((slot) => slot.start !== request.slot_start);
 
-	const days = new Map<string, string[]>();
+	// Each day with open times: its button in the row, and a form with its times. Picking a day
+	// shows its form, by the rule for its button in the <style> below.
+	const days = new Map<string, Slot[]>();
 	for (const slot of open) {
 		const day = dayFormat(env.TIME_ZONE).format(slot.start);
-		days.set(day, [...(days.get(day) ?? []), `<option value="${slot.start}">${escape(hourFormat(env.TIME_ZONE).format(slot.start))}</option>`]);
+		days.set(day, [...(days.get(day) ?? []), slot]);
 	}
-	const select = [...days].map(([day, options]) => `<optgroup label="${escape(day)}">${options.join("")}</optgroup>`).join("\n");
+	const picker = [...days].map(([day, slots], i) => {
+		const first = slots[0].start;
+		const button = `<label class="day"><input type="radio" name="day" id="day-${i}"${i === 0 ? " checked" : ""} aria-label="${escape(day)}">
+<span class="weekday">${escape(weekdayFormat(env.TIME_ZONE).format(first))}</span><span class="date">${escape(dateFormat(env.TIME_ZONE).format(first))}</span><span class="month">${escape(shortMonthFormat(env.TIME_ZONE).format(first))}</span></label>`;
+		const choices = slots.map(
+			(slot) => `<label><input type="radio" name="slot" value="${slot.start}" required> ${escape(hourFormat(env.TIME_ZONE).format(slot.start))}</label>`,
+		);
+		const form = `<form method="post" action="/requests/${token}" class="panel" id="panel-${i}">
+<input type="hidden" name="action" value="move">
+<input type="hidden" name="from" value="${request.slot_start}">
+<p class="picked" id="picked-${i}">${escape(day)}</p>
+<div class="times" role="radiogroup" aria-labelledby="picked-${i}">
+${choices.join("\n")}
+</div>
+<button class="primary">Move my drop-off</button>
+</form>`;
+		return { button, form, rule: `.picker:has(#day-${i}:checked) #panel-${i} { display: grid; }` };
+	});
 	const notes = [
 		...(params.has("closed") ? ["That time isn't open any more. Pick another."] : []),
 		...(params.has("busy") ? ["Too many tries just now. Wait a minute, then pick a time again."] : []),
 	];
 	const confirmed = request.status === "confirmed";
+	const ranges = [`<a href="/requests/${token}/times"${month === null ? ' aria-current="page"' : ""}>Next few weeks</a>`, ...months(env, now, month)];
 	return html(
 		"Change your drop-off time",
-		`<h1>Change your drop-off time</h1>
+		`<p class="eyebrow">Your repair request</p>
+<h1>Change your drop-off time</h1>
 <p class="state">It's now ${escape(stop(timeOf(env, request)))} ${
 			confirmed
 				? "Times here are when the tech who confirmed it can take it, so it stays confirmed."
 				: "Moving it asks our techs again, and we'll email you when one confirms the new time."
 		}</p>
-${notes.map((note) => `<p class="rush">${escape(note)}</p>`).join("\n")}
+${notes.map((note) => `<p class="notice" role="alert">${escape(note)}</p>`).join("\n")}
+<section class="card picker">
+<h2>New drop-off time</h2>
+<nav class="months" aria-label="Months">${ranges.join("")}</nav>
 ${
-	days.size > 0
-		? `<form method="post" action="/requests/${token}">
-<input type="hidden" name="action" value="move">
-<input type="hidden" name="from" value="${request.slot_start}">
-<select name="slot" required>
-${select}
-</select>
-<button>Move my drop-off</button>
-</form>`
+	picker.length > 0
+		? `<style>${picker.map((day) => day.rule).join("\n")}</style>
+<div class="days" role="radiogroup" aria-label="Days">
+${picker.map((day) => day.button).join("\n")}
+</div>
+${picker.map((day) => day.form).join("\n")}`
 		: `<p>No open times ${month === null ? "in the next few weeks" : "that month"}. Try another month, or reply to our email.</p>`
 }
-<p class="mine">Other months: ${months(env, now).join(" · ")}</p>
+</section>
 <p class="mine"><a href="/requests/${token}">Back to your request</a></p>`,
 	);
 }
