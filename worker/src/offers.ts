@@ -325,8 +325,11 @@ export async function page(env: Env, token: string): Promise<Response> {
 	const rush = intake.rush
 		? `<p class="rush">SAME-DAY: +${sameDayFee(intake)}, paid in person. It goes to the front of the queue.</p>\n`
 		: "";
-	// Techs call to talk through the price, so the number is one tap away on a phone.
-	const call = `<p class="call"><a href="tel:${escape(dialable(intake.phone))}">Call ${escape(intake.name)}: ${escape(intake.phone)}</a></p>\n`;
+	// Techs call to talk through the price, so the number, when they gave one, is one tap away on a
+	// phone.
+	const call = intake.phone
+		? `<p class="call"><a href="tel:${escape(dialable(intake.phone))}">Call ${escape(intake.name)}: ${escape(intake.phone)}</a></p>\n`
+		: "";
 	return html(
 		title,
 		`<h1>${escape(title)}</h1>
@@ -364,7 +367,11 @@ export async function queue(env: Env, token: string): Promise<Response> {
 		// The device too, when the title is the service, and how many sticks or the like it's for.
 		const quantity = intake.quantity ? `Quantity ${intake.quantity}` : "";
 		const details = [`Drop-off ${time}`, intake.service && intake.device, quantity, intake.name].filter((detail) => detail);
-		const call = ` · <a href="tel:${escape(dialable(intake.phone))}">${escape(intake.phone)}</a>`;
+		const call = intake.phone
+			? ` · <a href="tel:${escape(dialable(intake.phone))}">${escape(intake.phone)}</a>`
+			: intake.messenger
+				? " · Messenger"
+				: "";
 		const title = `${request.rush ? "SAME-DAY " : ""}${escape(what(intake))}`;
 		const approver = request.mine === request.confirmed_by ? "you" : escape(request.approver ?? "another tech");
 		// Without an offer of their own there's no page to press anything on.

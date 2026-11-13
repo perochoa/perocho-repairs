@@ -94,13 +94,33 @@ test("needs an email that looks like an address", () => {
 	}
 });
 
-test("needs a phone number with an area code", () => {
+test("takes a phone number only with an area code", () => {
 	for (const phone of ["4165550123", "(416) 555-0123", "+1 416.555.0123", "+44 20 7946 0958"]) {
 		assert.equal(parseIntake(form({ phone }), fees).ok, true, phone);
 	}
-	for (const phone of ["", "555-0123", "call me", "416-555-0123 x12", "+1 416 555 0123 4567 89"]) {
+	for (const phone of ["555-0123", "call me", "416-555-0123 x12", "+1 416 555 0123 4567 89"]) {
 		assert.equal(parseIntake(form({ phone }), fees).ok, false, phone);
 	}
+});
+
+test("needs only an email to reach them", () => {
+	const parsed = parseIntake(form({ phone: "" }), fees);
+	assert.ok(parsed.ok);
+	assert.equal(parsed.intake.phone, "");
+	assert.equal(parsed.intake.messenger, undefined);
+	assert.doesNotMatch(describe(parsed.intake, "Mon, Nov 2, 10:00 a.m."), /Phone|Other contact/);
+	assert.equal(parseIntake(form({ email: "" }), fees).ok, false);
+});
+
+test("notes Messenger only when it's picked without a phone number", () => {
+	const messenger = parseIntake(form({ phone: "", contact: "messenger" }), fees);
+	assert.ok(messenger.ok);
+	assert.equal(messenger.intake.messenger, true);
+	assert.match(describe(messenger.intake, "Mon, Nov 2, 10:00 a.m."), /\nOther contact: Messenger\n/);
+	const both = parseIntake(form({ contact: "messenger" }), fees);
+	assert.ok(both.ok);
+	assert.equal(both.intake.messenger, undefined);
+	assert.equal(both.intake.phone, "416-555-0123");
 });
 
 test("rejects missing fields", () => {
