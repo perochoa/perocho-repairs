@@ -1,8 +1,10 @@
 // A request offered to each tech. Their link opens a page that shows the request and lets them
-// approve its drop-off time or decline it, and mark the repair done once it's approved. The page
-// only shows it; the buttons POST, because mail scanners open the links in emails and must not
-// approve requests by doing so.
-// Each link also opens the repair queue the techs share: every approved repair not marked done.
+// approve its drop-off time or decline it, and mark the repair done once it's approved, or a no-show
+// once its drop-off time has started and the customer didn't come. The page only shows it; the
+// buttons POST, because mail scanners open the links in emails and must not approve requests by
+// doing so.
+// Each link also opens the repair queue the techs share: every approved repair not marked done or a
+// no-show.
 
 import { clear, sweep } from "./calendar.ts";
 import { type Mail, sendMail } from "./fastmail.ts";
@@ -27,6 +29,8 @@ export interface RequestRow {
 	done_by: string | null; // the offer token of that tech; null for ones done before 0005
 	customer_token: string | null; // the customer's link; null for requests from before 0006
 	cancelled: number | null; // when the customer cancelled it
+	no_show: number | null; // when a tech marked it a no-show
+	no_show_by: string | null; // the offer token of that tech
 }
 
 export interface OfferRow {
@@ -245,13 +249,35 @@ async function decline(env: Env, { offer, request, intake }: Loaded) {
 
 // Out of the queue once it's back with the customer. Approving only settled the drop-off, so any
 // tech with a link to it may have done the repair, one who declined the drop-off too. Only once,
-// so it keeps the first tech who said so.
+// so it keeps the first tech who said so. Not once it's a no-show: a repair is one or the other,
+// and checking in the same statement means a tech pressing "No-show" at the same moment can't
+// make it both.
 async function finish(env: Env, { offer, request }: Loaded) {
 	await env.DB.prepare(
-		"UPDATE requests SET done = ?3, done_by = ?2 WHERE id = ?1 AND status = 'confirmed' AND cancelled IS NULL AND done IS NULL",
+		`UPDATE requests SET done = ?3, done_by = ?2
+		 WHERE id = ?1 AND status = 'confirmed' AND cancelled IS NULL AND done IS NULL AND no_show IS NULL`,
 	)
 		.bind(request.id, offer.token, Date.now())
 		.run();
+}
+
+// Out of the queue too, when the customer didn't bring the device in: the drop-off was approved,
+// but the repair never happened, so it isn't marked done. Only once the drop-off time has started,
+// since before then they may still come, and only while it isn't done, in the same statement as
+// `finish` checks the other way round, so whichever lands first wins and the other changes nothing.
+// Any tech may press it, as with done, and the first keeps it. Only the tech whose press won emails
+// the customer, so they hear once.
+async function noShow(env: Env, { offer, request, intake }: Loaded) {
+	const now = Date.now();
+	const marked = await env.DB.prepare(
+		`UPDATE requests SET no_show = ?3, no_show_by = ?2
+		 WHERE id = ?1 AND status = 'confirmed' AND cancelled IS NULL AND done IS NULL AND no_show IS NULL
+		   AND slot_start <= ?3`,
+	)
+		.bind(request.id, offer.token, now)
+		.run();
+	if (marked.meta.changes !== 1) return;
+	await send(env, [notices.missed(intake, timeOf(env, request), `${env.SITE_URL}/request/`)]);
 }
 
 // A hold still on a tech's calendar that isn't the booking. The hourly job deletes these, and keeps
@@ -309,11 +335,12 @@ export async function expire(env: Env, now = Date.now()): Promise<void> {
 	// Events nothing points at any more. Google sign-in failing only leaves them for the next run.
 	await sweep(env);
 
-	// Settled: nobody approved it, the customer cancelled it, or it's back with them. A repair still
-	// in the queue stays however old it is, and so does one with a hold still to delete, since its
-	// offer is the only record of the hold. Offers first, since they point at the request.
+	// Settled: nobody approved it, the customer cancelled it, it's back with them, or they never
+	// brought it in. A repair still in the queue stays however old it is, and so does one with a hold
+	// still to delete, since its offer is the only record of the hold. Offers first, since they point
+	// at the request.
 	const settled = `SELECT id FROM requests WHERE slot_start < ?1
-		AND (status IN ('declined', 'expired') OR cancelled IS NOT NULL OR done IS NOT NULL)
+		AND (status IN ('declined', 'expired') OR cancelled IS NOT NULL OR done IS NOT NULL OR no_show IS NOT NULL)
 		AND NOT EXISTS (SELECT 1 FROM offers WHERE offers.request_id = requests.id
 			AND ${NOT_BOOKING})`;
 	const cutoff = now - env.RETENTION_DAYS * 86_400_000;
@@ -331,6 +358,7 @@ export async function act(env: Env, token: string, action: string, origin: strin
 	if (action === "confirm") await confirm(env, loaded, origin, at);
 	if (action === "decline") await decline(env, loaded);
 	if (action === "done") await finish(env, loaded);
+	if (action === "no-show") await noShow(env, loaded);
 }
 
 // What a tech's link says, and the buttons it offers, for where the request stands.
@@ -349,10 +377,19 @@ function view({ offer, request, offers, intake }: Loaded, time: string): [string
 			const finisher = who(request.done_by ?? request.confirmed_by);
 			return [`${finisher} finished this repair`, `${approved}, and it's out of the queue.`, ""];
 		}
+		if (request.no_show !== null) {
+			return [
+				`${who(request.no_show_by)} marked this a no-show`,
+				`${approved}, but the customer didn't drop it off. It's out of the queue, and they've been emailed to pick another time.`,
+				"",
+			];
+		}
+		// Only once the time has started: before then the customer may still come.
+		const missed = passed(request) ? '<button name="action" value="no-show">No-show</button>' : "";
 		return [
 			approved,
-			"The customer has been told, and it's in the repair queue for any tech to pick up. Whoever does the repair agrees with them when it'll be ready, and marks it done once it's back with them.",
-			'<button name="action" value="done">Mark done</button>',
+			"The customer has been told, and it's in the repair queue for any tech to pick up. Whoever does the repair agrees with them when it'll be ready, and marks it done once it's back with them. If they don't drop it off, mark it a no-show once the time has started.",
+			'<button name="action" value="done">Mark done</button>' + missed,
 		];
 	}
 	if (request.status === "declined") return ["Every tech declined this request", "The customer has been told.", ""];
@@ -397,8 +434,8 @@ ${buttons && `<form method="post"><input type="hidden" name="at" value="${reques
 	);
 }
 
-// One queue for every tech: each approved repair nobody has marked done, whoever approved it, in
-// the order to work them: same-day first (the `rush` column), then the earliest drop-off, then the
+// One queue for every tech: each approved repair nobody has marked done or a no-show, whoever
+// approved it, in the order to work them: same-day first (the `rush` column), then the earliest drop-off, then the
 // first filed. `rush > 0`, not `rush`: same-day is same-day whatever fee it was quoted at. Each has who approved it, and the
 // viewing tech's own offer for it, so what they press there is recorded as them. A tech is their
 // calendar, as everywhere else a request meets one; one added to TECHS since it came in has none.
@@ -406,7 +443,7 @@ ${buttons && `<form method="post"><input type="hidden" name="at" value="${reques
 const QUEUE_SQL = `SELECT requests.*,
 	(SELECT name FROM offers WHERE token = requests.confirmed_by) AS approver,
 	(SELECT token FROM offers WHERE request_id = requests.id AND calendar_id = ?1 ORDER BY position LIMIT 1) AS mine
-	FROM requests WHERE status = 'confirmed' AND done IS NULL AND cancelled IS NULL
+	FROM requests WHERE status = 'confirmed' AND done IS NULL AND cancelled IS NULL AND no_show IS NULL
 	ORDER BY rush > 0 DESC, slot_start, created`;
 
 type Queued = RequestRow & { approver: string | null; mine: string | null };
@@ -446,11 +483,11 @@ Approved by ${approver}${unlinked}</span></li>`;
 		`<h1>Repair queue</h1>
 ${
 	items.length > 0
-		? `<p class="state">${count} approved and not marked done, for any tech to pick up: same-day first, then by drop-off time. Whoever does one marks it done on its page.</p>
+		? `<p class="state">${count} approved and not marked done or a no-show, for any tech to pick up: same-day first, then by drop-off time. Whoever does one marks it done on its page.</p>
 <ol class="queue">
 ${items.join("\n")}
 </ol>`
-		: `<p class="state">Nothing in the queue. Repairs show up here once a tech approves the drop-off, until one marks them done.</p>`
+		: `<p class="state">Nothing in the queue. Repairs show up here once a tech approves the drop-off, until one marks them done or a no-show.</p>`
 }`,
 	);
 }

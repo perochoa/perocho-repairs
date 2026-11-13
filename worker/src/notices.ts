@@ -141,6 +141,21 @@ export const declined = (intake: Intake, time: string): Message => turnedAway(in
 
 export const expired = (intake: Intake, time: string): Message => turnedAway(intake, time, "couldn't", "could confirm");
 
+// When a tech marks an approved drop-off a no-show. Rescheduling isn't something the techs do, so
+// it points them back to the form for a new time, or a reply to us. Not to their own link: it only
+// changes a drop-off whose time is still ahead, and this one's has passed.
+export const missed = (intake: Intake, time: string, form: string): Message => ({
+	to: intake.email,
+	subject: `We missed you: ${what(intake)}`,
+	text: [
+		hi(intake),
+		"",
+		`We were expecting your device on ${stop(time)} It didn't reach us, so we've taken it off our list.`,
+		`If you'd still like the repair, reply to this email and we'll find another time, or pick a new one with the form: ${form}`,
+		...yours(intake, time),
+	].join("\n"),
+});
+
 // To the other techs and repairs@, so nobody plans around the hold any more, and everyone knows the
 // repair is theirs to pick up too. The address is the one the customer was sent.
 export const taken = (intake: Intake, time: string, to: string, tech: string, address: string): Message => ({
