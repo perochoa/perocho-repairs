@@ -40,7 +40,7 @@ export const site: Site = {
 	payments: ["cash", "Interac e-Transfer"],
 	serviceArea: `${city}, drop-off only. Message us for the address.`,
 	// Assumes the request form is on (intakeUrl): its times come from the techs' calendars.
-	hours: "Drop-off whenever a tech can take devices in. The request form shows the open times.",
+	hours: "Drop-off whenever a we can take devices in. The request form shows the open times.",
 	intakeUrl: "https://perocho-intake.perocho-xela.workers.dev",
 };
 
