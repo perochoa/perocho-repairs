@@ -9,7 +9,7 @@ export function getStaticPaths() {
 	const pages: Record<Outcome, { title: string; text: string; retry: boolean }> = {
 		sent: {
 			title: "Request sent",
-			text: "Thanks! We've emailed you a copy, and we'll email you again when a tech confirms your drop-off time. A tech may call you about the price, and will let you know when it's ready. No email? Check your spam folder.",
+			text: "Thanks! We've emailed you a copy, and we'll email you again when a tech confirms your drop-off time. We'll let you know when it's ready. No email? Check your spam folder.",
 			retry: false,
 		},
 		// Other requests never close a time; it's now too soon, or a tech's calendar changed.
@@ -28,12 +28,95 @@ export function getStaticPaths() {
 }
 
 const { title, text, retry } = Astro.props;
+const { outcome } = Astro.params;
 ---
 
 <MessagePage eyebrow="Request a repair" title={title} text={text} mark={retry ? "drift" : "done"}>
+	<!-- Shown only when they picked Messenger on the form, which left the message in this tab. -->
+	{
+		outcome === "sent" && (
+			<section class="messenger" slot="before-actions" data-messenger hidden>
+				<h2>Send us this on Messenger</h2>
+				<p class="lead">So we know which request the chat is about. The button copies it for you; paste it into the chat.</p>
+				<pre data-messenger-text />
+				<a class="button" href={site.messengerUrl} target="_blank" rel="noopener" data-messenger-open>
+					Copy and open Messenger
+				</a>
+				<p class="status" role="status" data-copied />
+			</section>
+		)
+	}
 	{retry && <a class="button" href="/request/">Back to the form</a>}
 	<a class={retry ? "button secondary" : "button"} href={retry ? site.messengerUrl : "/"}>
 		{retry ? "Message us" : "Go to the home page"}
 	</a>
 	{retry && <a class="button secondary" href={`mailto:${site.email}`}>Email us</a>}
 </MessagePage>
+
+<script>
+	import { MESSENGER_KEY } from "../../messenger";
+
+	const section = document.querySelector<HTMLElement>("[data-messenger]");
+	let message: string | null = null;
+	try {
+		message = sessionStorage.getItem(MESSENGER_KEY);
+	} catch {
+		// No storage, so nothing to offer: the email they get still has the request.
+	}
+	if (section && message) {
+		section.querySelector("[data-messenger-text]")!.textContent = message;
+		section.hidden = false;
+		const copied = section.querySelector<HTMLElement>("[data-copied]")!;
+		// Copies, then lets the link go on to Messenger: in a new tab on a computer, or the app on a
+		// phone (BaseLayout's script). A link with the text in it would skip the app, which a personal
+		// profile needs on a phone.
+		section.querySelector("[data-messenger-open]")!.addEventListener("click", () => {
+			navigator.clipboard
+				?.writeText(message)
+				.then(() => (copied.textContent = "Copied. Paste it into the chat."))
+				.catch(() => (copied.textContent = "We couldn't copy it, so copy the message above yourself."));
+		});
+	}
+</script>
+
+<style>
+	.messenger {
+		display: grid;
+		gap: 0.75rem;
+		max-width: 36rem;
+		margin-bottom: 2rem;
+		padding: 1.25rem 1.5rem;
+		border: 1px solid var(--accent);
+		border-radius: 0.75rem;
+		background: var(--surface);
+	}
+	.messenger[hidden] {
+		display: none;
+	}
+	h2 {
+		margin: 0;
+		font-size: 1.125rem;
+	}
+	.lead,
+	.status {
+		margin: 0;
+		color: var(--muted);
+	}
+	.status:empty {
+		display: none;
+	}
+	pre {
+		margin: 0;
+		padding: 0.75rem 1rem;
+		border: 1px solid var(--line);
+		border-radius: 0.5rem;
+		background: var(--bg);
+		font: inherit;
+		font-size: 0.9375rem;
+		white-space: pre-wrap;
+		user-select: all;
+	}
+	.button {
+		justify-self: start;
+	}
+</style>

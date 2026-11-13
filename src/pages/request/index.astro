@@ -21,7 +21,7 @@ const unsureFee = sameDayRange(services);
 		<h1>Tell us about your device</h1>
 		<p class="lede">
     Pick a time to drop your device off and we'll email you a confirmation.
-    Someone from our team may call or text you if we need more information or have an update on your device.
+    If you give us another way to reach you, we'll only use it for questions and updates about your device.
     Nothing is booked until your request is confirmed.{" "}
 			Prefer Facebook? <a href={site.messengerUrl}>Message us on Messenger</a>
 			{
@@ -69,11 +69,28 @@ const unsureFee = sameDayRange(services);
 									<input type="email" name="email" autocomplete="email" maxlength={MAX_LENGTH.email} required aria-describedby="email-hint" />
 								</label>
 								<p class="hint" id="email-hint">We'll email you when we get your request, and again when a tech confirms it.</p>
-								<label>
+								<!-- Email is the one way in everyone gives. The phone field is only shown and sent while
+								     Phone is picked, like the quantity below. Messenger has no field: the page they land
+								     on after sending gives them a message to send us there. -->
+								<div class="contact" role="radiogroup" aria-labelledby="contact-label">
+									<span class="label" id="contact-label">Another way to reach you <span class="optional">(optional)</span></span>
+									<div class="choices">
+										<label class="choice"><input type="radio" name="contact" value="email" checked /> Just email</label>
+										<label class="choice"><input type="radio" name="contact" value="phone" /> Phone</label>
+										<label class="choice"><input type="radio" name="contact" value="messenger" /> Messenger</label>
+									</div>
+								</div>
+								<label data-contact="phone" hidden>
 									Phone
-									<input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength={MAX_LENGTH.phone} required aria-describedby="phone-hint" />
+									<input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength={MAX_LENGTH.phone} required disabled aria-describedby="phone-hint" />
 								</label>
-								<p class="hint" id="phone-hint">With the area code, so a tech can call you about the price.</p>
+								<p class="hint" id="phone-hint" data-contact="phone" hidden>
+									We only use it to send updates. No spam, no cold calls, ever.
+								</p>
+								<p class="hint" data-contact="messenger" hidden>
+									Once you've sent this, we'll give you a message to send us on Messenger, so we know which request
+									the chat is about.
+								</p>
 							</fieldset>
 						</div>
 
@@ -176,6 +193,7 @@ const unsureFee = sameDayRange(services);
 
 <script>
 	import { validEmail, validPhone } from "../../../worker/src/limits";
+	import { MESSENGER_KEY } from "../../messenger";
 
 	const form = document.querySelector<HTMLFormElement>("form[data-request]");
 
@@ -220,6 +238,45 @@ const unsureFee = sameDayRange(services);
 			phone.setCustomValidity(valid ? "" : "Enter your phone number with its area code, like 416-555-0123.");
 		});
 
+		// The other way to reach them: only the picked one's field and hint show, and the phone is only
+		// required and sent while Phone is picked. What they typed stays if they switch back.
+		const contactParts = [...form.querySelectorAll<HTMLElement>("[data-contact]")];
+		const contact = () => form.querySelector<HTMLInputElement>("[name=contact]:checked")?.value ?? "email";
+		const showContact = () => {
+			for (const element of contactParts) element.hidden = element.dataset.contact !== contact();
+			phone.disabled = contact() !== "phone";
+		};
+		form.addEventListener("change", (event) => {
+			if ((event.target as HTMLInputElement).name === "contact") showContact();
+		});
+		showContact();
+
+		// For Messenger, the "sent" page asks them to send us the request's details there, so the chat
+		// can be matched to the request. Those are what they typed here, so they're handed over in the
+		// tab's own storage rather than through the worker or the address bar. Any other pick clears
+		// what an earlier request left.
+		const rememberForMessenger = () => {
+			try {
+				if (contact() !== "messenger") return sessionStorage.removeItem(MESSENGER_KEY);
+				const value = (name: string) => form.querySelector<HTMLInputElement>(`[name=${name}]:not(:disabled)`)?.value.trim() ?? "";
+				const quantity = value("quantity");
+				const day = form.querySelector("#slot-day")?.textContent ?? "";
+				const time = form.querySelector("[name=slot]:checked")?.parentElement?.textContent ?? "";
+				const lines = [
+					"Hi! I just sent a repair request on your website.",
+					`Name: ${value("name")}`,
+					`Email: ${value("email")}`,
+					`Service: ${service.selectedOptions[0]?.text.trim() ?? ""}`,
+					...(quantity ? [`Quantity: ${quantity}`] : []),
+					`Device: ${value("device")}`,
+					`Drop-off: ${day}, ${time}`,
+				];
+				sessionStorage.setItem(MESSENGER_KEY, lines.join("\n"));
+			} catch {
+				// Without storage the "sent" page just doesn't ask; the request itself still says Messenger.
+			}
+		};
+
 		// "Request this repair" on a service card links here with ?service=<id>.
 		const wanted = new URLSearchParams(location.search).get("service");
 		const service = form.querySelector<HTMLSelectElement>("[name=service]")!;
@@ -249,6 +306,7 @@ const unsureFee = sameDayRange(services);
 		// The time picker has already stopped a submit without a time by now.
 		form.addEventListener("submit", (event) => {
 			if (event.defaultPrevented) return;
+			rememberForMessenger();
 			// One request per press; the worker would only file a second one as the same request.
 			send.disabled = true;
 			send.classList.add("is-sending");
@@ -297,7 +355,7 @@ const unsureFee = sameDayRange(services);
 		font-weight: 600;
 		font-size: 0.9375rem;
 	}
-	input:not([type="checkbox"]),
+	input:not([type="checkbox"], [type="radio"]),
 	select,
 	textarea {
 		box-sizing: border-box;
@@ -410,6 +468,7 @@ const unsureFee = sameDayRange(services);
 	.notice[hidden],
 	.fields[hidden],
 	[data-quantity][hidden],
+	[data-contact][hidden],
 	.loading[hidden] {
 		display: none;
 	}
@@ -497,6 +556,44 @@ const unsureFee = sameDayRange(services);
 	}
 	.check .hint {
 		margin: 0;
+	}
+	.contact {
+		display: grid;
+		gap: 0.375rem;
+	}
+	.label {
+		font-weight: 600;
+		font-size: 0.9375rem;
+	}
+	.choices {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+	/* Like the same-day card: the whole box is the target and lights up when picked. */
+	.choice {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.875rem;
+		border: 1px solid var(--line);
+		border-radius: 0.5rem;
+		font-weight: 400;
+		cursor: pointer;
+		transition:
+			border-color 0.15s,
+			background-color 0.15s;
+	}
+	.choice:hover {
+		border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+	}
+	.choice:has(input:checked) {
+		border-color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 8%, transparent);
+	}
+	.choice input {
+		margin: 0;
+		accent-color: var(--accent);
 	}
 	.spinner {
 		display: none;
