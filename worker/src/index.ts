@@ -26,6 +26,7 @@ import { formatTime, type Intake, parseIntake } from "./intake.ts";
 import * as notices from "./notices.ts";
 import { act, expire, page, queue } from "./offers.ts";
 import type { Outcome } from "./outcomes.ts";
+import { message } from "./pages.ts";
 import { horizon, monthWindow, rowEnd } from "./slots.ts";
 import { parseTechs, type Tech } from "./techs.ts";
 
@@ -255,7 +256,7 @@ export default {
 			console.error(error);
 			if (pathname === "/request") return Response.redirect(`${env.SITE_URL}/request/failed/`, 303);
 			if (OFFER.test(pathname) || CUSTOMER.test(pathname)) {
-				return new Response("Something went wrong, so nothing changed. Go back and try again.", { status: 500 });
+				return message("Something went wrong", "Something went wrong, so nothing changed. Go back and try again.", 500);
 			}
 			return new Response("Something went wrong", { status: 500 });
 		}

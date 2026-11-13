@@ -633,7 +633,7 @@ test("shows a tech the request without changing anything", async () => {
 	assert.match(body, /New repair request/);
 	assert.match(body, /Loud fan/);
 	assert.match(body, /<a href="tel:4165550123">Call Jane: \(416\) 555-0123<\/a>/);
-	assert.match(body, /<form method="post">/);
+	assert.match(body, /<form method="post" class="actions">/);
 	assert.match(body, /value="confirm">Approve drop-off</);
 	assert.match(body, /value="decline"/);
 	// The customer only gets the address once a tech approves, so the page doesn't show it yet.
@@ -1707,7 +1707,7 @@ test("the customer's emails link to their own page, which shows the request and 
 	const body = await response.text();
 	assert.match(body, /Waiting for a tech to confirm/);
 	assert.match(body, /Loud fan/);
-	assert.match(body, new RegExp(`<a href="${new URL(link).pathname}/times">Change the time</a>`));
+	assert.match(body, new RegExp(`<a class="button primary" href="${new URL(link).pathname}/times">Change the time</a>`));
 	assert.match(body, /<form method="post"><button name="action" value="cancel">Cancel my drop-off<\/button><\/form>/);
 	assert.equal(patched.length + deleted.length, 0);
 	assert.equal(request().cancelled, null);
@@ -1727,7 +1727,7 @@ test("each request gets its own customer link", async () => {
 	await submit({ slot: iso(slotStart), name: "Bob", email: "bob@example.com" });
 	const bob = text(to("bob@example.com")[0]).match(LINK)![0];
 	assert.notEqual(jane, bob);
-	assert.match(await (await get(bob)).text(), /Name: Bob/);
+	assert.match(await (await get(bob)).text(), /<dt>Name<\/dt><dd>Bob<\/dd>/);
 });
 
 test("answers an unknown customer link with 404, and changes nothing for a post to one", async () => {
@@ -1903,7 +1903,7 @@ test("a request nobody could take can't be cancelled or moved", async () => {
 
 // The times on a customer's list, as epoch ms.
 const listed = async (link: string, query = "") =>
-	[...(await (await timesAt(link, query)).text()).matchAll(/<option value="(\d+)">/g)].map((match) => Number(match[1]));
+	[...(await (await timesAt(link, query)).text()).matchAll(/<input type="radio" name="slot" value="(\d+)"/g)].map((match) => Number(match[1]));
 
 test("the list of times has every tech's open times while it's open, and only the approver's once approved", async () => {
 	both();
@@ -1917,9 +1917,12 @@ test("the list of times has every tech's open times while it's open, and only th
 	assert.equal(patched.length + deleted.length + holds.length, 2); // just the two holds from filing it
 
 	const body = await (await timesAt(link)).text();
-	assert.match(body, /<form method="post" action="\/requests\/[0-9a-f-]+">/);
+	assert.match(body, /<form method="post" action="\/requests\/[0-9a-f-]+" class="panel" id="panel-0">/);
 	assert.match(body, new RegExp(`<input type="hidden" name="from" value="${slotStart}">`));
-	assert.match(body, /<optgroup label="\w{3}, \w{3} \d+">/);
+	// Each day's times show when its day is picked, and the first is picked to start with.
+	assert.match(body, /<p class="picked" id="picked-0">\w+, \w+ \d+<\/p>/);
+	assert.match(body, /<input type="radio" name="day" id="day-0" checked/);
+	assert.match(body, /\.picker:has\(#day-0:checked\) #panel-0 \{ display: grid; \}/);
 	assert.match(body, /Moving it asks our techs again/);
 
 	await press(linkFor("sam@example.com"), "confirm");
@@ -1988,7 +1991,7 @@ test("moving an open request holds the new time, lets the old holds go, and asks
 
 	// The techs' pages and the customer's show the new time, and approving it books that.
 	assert.match(await (await offerPage(richard)).text(), /New repair request/);
-	assert.match(await (await get(link)).text(), new RegExp(`Drop-off time: ${when}`));
+	assert.match(await (await get(link)).text(), new RegExp(`<dt>Drop-off time</dt><dd>${when}</dd>`));
 	mails = [];
 	await press(richard, "confirm");
 	assert.equal(request().status, "confirmed");

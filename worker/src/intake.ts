@@ -99,20 +99,25 @@ export const formatTime = (ms: number, timeZone: string): string => formatter(ti
 // Ends a sentence on a time without doubling the period of "a.m." and "p.m.".
 export const stop = (time: string) => (time.endsWith(".") ? time : `${time}.`);
 
+// The labelled lines of a request, the ones it has. The emails and events show them as text, and
+// the pages as a list.
+export const fields = (intake: Intake, time: string): [string, string][] =>
+	(
+		[
+			["Name", intake.name],
+			["Email", intake.email],
+			["Phone", intake.phone],
+			["Other contact", intake.messenger ? "Messenger" : ""],
+			["Service", intake.service],
+			["Quantity", intake.quantity ? String(intake.quantity) : ""],
+			["Device", intake.device],
+			["Drop-off time", time],
+			["Same-day", intake.rush ? `yes, +${sameDayFee(intake)} (paid in person)` : ""],
+		] as [string, string][]
+	).filter(([, value]) => value);
+
 export function describe(intake: Intake, time: string): string {
-	const lines = [
-		["Name", intake.name],
-		["Email", intake.email],
-		["Phone", intake.phone],
-		["Other contact", intake.messenger ? "Messenger" : ""],
-		["Service", intake.service],
-		["Quantity", intake.quantity ? String(intake.quantity) : ""],
-		["Device", intake.device],
-		["Drop-off time", time],
-		["Same-day", intake.rush ? `yes, +${sameDayFee(intake)} (paid in person)` : ""],
-	]
-		.filter(([, value]) => value)
-		.map(([label, value]) => `${label}: ${value}`);
+	const lines = fields(intake, time).map(([label, value]) => `${label}: ${value}`);
 
 	lines.push("", "What's wrong:", intake.problem);
 	if (intake.notes) lines.push("", "Notes:", intake.notes);
