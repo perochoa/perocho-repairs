@@ -131,7 +131,7 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 		token = await accessToken(env.GOOGLE_SERVICE_ACCOUNT);
 		const booking = {
 			summary: notices.bookedSummary(intake),
-			description: notices.bookedDescription(intake, time, offer.name),
+			description: notices.bookedDescription(intake, time, offer.name, env.DROPOFF_ADDRESS),
 		};
 		if (!holdId || !(await bookEvent(token, offer.calendar_id, holdId, booking))) {
 			await createEvent(
@@ -162,11 +162,11 @@ async function confirm(env: Env, { offer, request, offers, intake }: Loaded) {
 
 	// Every other tech hears, those who declined the drop-off too: the repair is in their queue now.
 	await send(env, [
-		notices.confirmed(intake, time, offer.name),
+		notices.confirmed(intake, time, offer.name, env.DROPOFF_ADDRESS),
 		...offers
 			.filter((other) => other.token !== offer.token)
-			.map((other) => notices.taken(intake, time, other.email, offer.name)),
-		notices.taken(intake, time, env.MAIL_TO, offer.name),
+			.map((other) => notices.taken(intake, time, other.email, offer.name, env.DROPOFF_ADDRESS)),
+		notices.taken(intake, time, env.MAIL_TO, offer.name, env.DROPOFF_ADDRESS),
 	]);
 }
 
@@ -330,11 +330,15 @@ export async function page(env: Env, token: string): Promise<Response> {
 	const call = intake.phone
 		? `<p class="call"><a href="tel:${escape(dialable(intake.phone))}">Call ${escape(intake.name)}: ${escape(intake.phone)}</a></p>\n`
 		: "";
+	// Once approved, the customer has been sent the address, so the page shows the same line, and
+	// any tech can tell what they were told. It's escaped like the rest, though it's our own secret.
+	const address =
+		request.status === "confirmed" ? `<p class="address">${escape(notices.dropOff(env.DROPOFF_ADDRESS))}</p>\n` : "";
 	return html(
 		title,
 		`<h1>${escape(title)}</h1>
 <p class="state">${escape(state)}</p>
-${rush}${call}<pre>${escape(describe(intake, time))}</pre>
+${rush}${address}${call}<pre>${escape(describe(intake, time))}</pre>
 ${buttons && `<form method="post">${buttons}</form>`}
 <p class="mine"><a href="/offers/${offer.token}/queue">Repair queue</a></p>`,
 	);
