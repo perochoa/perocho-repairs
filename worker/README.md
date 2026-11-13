@@ -112,10 +112,7 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
 
 For an approved drop-off where you need to reach the customer (to talk through the price, or
 check they're still coming) and they don't answer. It adds no states of its own: it ends in the
-customer's own cancel or reschedule link, or the No-show button. Both are still being built
-([#159](https://github.com/perochoa/perocho-repairs/issues/159) and
-[#160](https://github.com/perochoa/perocho-repairs/issues/160)); until they're live, cancel or
-move it by hand as above, and leave a no-show in the queue and tell the others.
+customer's own cancel or reschedule link, or the No-show button.
 
 - **Whoever approved the drop-off follows up**, so the customer hears from one person. Use the
   email link on the repair's page or the queue: it copies repairs@, so the others can see each
