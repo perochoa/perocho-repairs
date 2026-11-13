@@ -20,8 +20,9 @@ const unsureFee = sameDayRange(services);
 		<p class="eyebrow">Request a repair</p>
 		<h1>Tell us about your device</h1>
 		<p class="lede">
-			Pick a time to drop your device off, and a tech will call or email you about the price and when it'll
-			be ready. Nothing is booked until a tech confirms.{" "}
+    Pick a time to drop your device off and we'll email you a confirmation.
+    Someone from our team may call or text you if we need more information or have an update on your device.
+    Nothing is booked until your request is confirmed.{" "}
 			Prefer Facebook? <a href={site.messengerUrl}>Message us on Messenger</a>
 			{
 				marketplace && (
@@ -41,12 +42,12 @@ const unsureFee = sameDayRange(services);
 					<noscript>
 						<p class="notice">
 							Picking a drop-off time needs JavaScript. <a href={site.messengerUrl}>Message us on Messenger</a> or
-							email <a href={`mailto:${site.email}`}>{site.email}</a>, and we'll find a time.
+							email <a href={`mailto:${site.email}`}>{site.email}</a>, and we'll be in touch.
 						</p>
 					</noscript>
 					<p class="notice" data-no-slots tabindex="-1" hidden>
 						<span data-no-slots-reason></span> <a href={site.messengerUrl}>Message us on Messenger</a> or email{" "}
-						<a href={`mailto:${site.email}`}>{site.email}</a> to ask about a repair, and we'll find a time.
+						<a href={`mailto:${site.email}`}>{site.email}</a> to ask about a repair, and we'll be in touch.
 					</p>
 					<div class="loading" data-loading hidden>
 						<p class="hint">Loading open times…</p>

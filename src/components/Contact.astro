@@ -17,8 +17,8 @@ import { site } from "../site";
 					{
 						site.intakeUrl ? (
 							<>
-								<a href="/request/">Send a repair request</a> and pick a drop-off time, or ask us
-								anything first on <a href={site.messengerUrl}>Messenger</a> or at{" "}
+								<a href="/request/">Send a repair request</a> and pick a drop-off time. Ask us
+								anything on <a href={site.messengerUrl}>Messenger</a> or at{" "}
 								<a href={`mailto:${site.email}`}>{site.email}</a>.
 							</>
 						) : (
@@ -31,7 +31,7 @@ import { site } from "../site";
 					{
 						marketplace && (
 							<>
-								See our listings and reviews on{" "}
+								See our services and reviews on{" "}
 								<a href={marketplace.url}>Facebook Marketplace</a>.
 							</>
 						)

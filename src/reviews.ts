@@ -33,14 +33,28 @@ export const starRow = (stars: number) => "★".repeat(Math.round(stars));
 export const marketplace: Marketplace | undefined = {
 	url: `https://www.facebook.com/marketplace/profile/${site.facebookId}`,
 	stars: 5,
-	ratings: 75,
+	ratings: 80,
 	strengths: [
-		{ label: "Communication", count: 46 },
-		{ label: "Punctuality", count: 43 },
-		{ label: "Pricing", count: 24 },
-		{ label: "Item description", count: 20 },
+		{ label: "Communication", count: 53 },
+		{ label: "Punctuality", count: 51 },
+		{ label: "Pricing", count: 30 },
+		{ label: "Item description", count: 24 },
 	],
 	reviews: [
+    {
+      name: "Andrew",
+      date: "2026-11-12",
+      stars: 5,
+      notable: ["Punctuality", "Communication", "Pricing", "Item description"],
+      text: "Very trustworthy and fast process. Controller feels brand new!",
+    },
+    {
+      name: "Jacob",
+      date: "2026-11-11",
+      stars: 5,
+      notable: ["Punctuality", "Pricing"],
+      text: "10/10 got it done in 17 minutes",
+    },
 		{
 			name: "Michelle",
 			date: "2026-10-13",
@@ -61,6 +75,6 @@ export const marketplace: Marketplace | undefined = {
 			stars: 5,
 			notable: ["Punctuality", "Communication", "Pricing", "Item description"],
 			text: "Perfect! Thank you",
-		},
+		}
 	],
 };
