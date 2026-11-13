@@ -1486,6 +1486,119 @@ test("the hourly job keeps an old request until its stray holds are deleted", as
 	assert.ok(!calendars["richard@example.com"].some((e: any) => e.id === "hold1"));
 });
 
+// No-shows: an approved drop-off the customer never brought in.
+
+const missed = () => ({ ...(db.sqlite.prepare("SELECT no_show, no_show_by FROM requests").get() as any) });
+// Moves the drop-off to have started a quarter hour ago, as it can only be once it's approved.
+const started = () => db.sqlite.prepare("UPDATE requests SET slot_start = ?1 - ?2, slot_end = ?1").run(Date.now(), quarter);
+
+test("any tech can mark an approved drop-off a no-show once its time has started, and the customer hears", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const [richard, sam] = [linkFor("richard@example.com"), linkFor("sam@example.com")];
+	await press(richard, "no-show"); // still open: nothing to mark
+	await press(sam, "confirm");
+	// Before the time they may still come, so there's no button and a press changes nothing.
+	assert.doesNotMatch(await (await offerPage(sam)).text(), /value="no-show"/);
+	await press(sam, "no-show");
+	assert.deepEqual(missed(), { no_show: null, no_show_by: null });
+
+	started();
+	for (const link of [richard, sam]) {
+		assert.match(await (await offerPage(link)).text(), /value="done">Mark done<\/button><button name="action" value="no-show">No-show</);
+	}
+	mails = [];
+	deleted = [];
+	patched = [];
+	await press(richard, "no-show");
+	assert.ok(missed().no_show > 0);
+	assert.equal(missed().no_show_by, tokenOf(richard));
+	assert.deepEqual(finished(), { done: null, done_by: null });
+	assert.equal(status(), "confirmed");
+
+	// Only the customer is emailed, pointed at the form for another time; the booking stays.
+	assert.deepEqual(mails.map((mail) => mail.to[0].email), ["jane@example.com"]);
+	assert.equal(mails[0].subject, "We missed you: PS5 deep cleaning");
+	assert.match(text(mails[0]), /It didn't reach us, so we've taken it off our list\./);
+	assert.match(text(mails[0]), /pick a new one with the form: https:\/\/repairs\.perocho\.com\/request\//);
+	assert.equal(deleted.length + patched.length, 0);
+
+	// Both pages say it's a no-show, not finished, with nothing left to press, and the queue is empty.
+	const [his, mine] = [await (await offerPage(sam)).text(), await (await offerPage(richard)).text()];
+	assert.match(his, /Richard marked this a no-show/);
+	assert.match(his, /You approved the drop-off, but the customer didn&#39;t drop it off\. It&#39;s out of the queue/);
+	assert.match(mine, /You marked this a no-show/);
+	for (const page of [his, mine]) {
+		assert.doesNotMatch(page, /finished this repair/);
+		assert.ok(!page.includes("<form"));
+	}
+	for (const link of [richard, sam]) assert.match(await (await queueOf(link)).text(), /Nothing in the queue/);
+});
+
+test("a no-show is marked only once, and then it can't be marked done", async () => {
+	both();
+	await submit({ slot: iso(slotStart) });
+	const [richard, sam] = [linkFor("richard@example.com"), linkFor("sam@example.com")];
+	await press(sam, "confirm");
+	started();
+	await press(sam, "no-show");
+	const first = missed();
+	mails = [];
+	await press(richard, "no-show");
+	await press(richard, "done");
+	assert.deepEqual(missed(), first);
+	assert.equal(first.no_show_by, tokenOf(sam));
+	assert.deepEqual(finished(), { done: null, done_by: null });
+	assert.equal(mails.length, 0); // the customer heard once
+});
+
+test("a repair marked done can't be marked a no-show", async () => {
+	const sam = await taken({});
+	started();
+	await press(sam, "done");
+	mails = [];
+	await press(sam, "no-show");
+	assert.deepEqual(missed(), { no_show: null, no_show_by: null });
+	assert.ok(finished().done > 0);
+	assert.equal(mails.length, 0);
+	assert.match(await (await offerPage(sam)).text(), /You finished this repair/);
+});
+
+for (const [first, second] of [["done", "no-show"], ["no-show", "done"]]) {
+	test(`${first} and ${second} pressed at once: exactly one counts`, async () => {
+		both();
+		await submit({ slot: iso(slotStart) });
+		const [richard, sam] = [linkFor("richard@example.com"), linkFor("sam@example.com")];
+		await press(sam, "confirm");
+		started();
+		mails = [];
+		// Both load the repair as open before either changes it.
+		await Promise.all([press(richard, first), press(sam, second)]);
+		const [done, noShow] = [finished().done !== null, missed().no_show !== null];
+		assert.ok(done !== noShow, `done ${done}, no-show ${noShow}`);
+		assert.equal(mails.length, noShow ? 1 : 0);
+	});
+}
+
+test("the hourly job leaves a no-show and its booking alone until it's old enough, then deletes it", async () => {
+	const sam = await taken({});
+	started();
+	await press(sam, "no-show");
+	deleted = [];
+	mails = [];
+	await tick();
+	assert.equal(status(), "confirmed");
+	assert.equal(deleted.length + mails.length, 0);
+
+	age(env.RETENTION_DAYS - 1);
+	await tick();
+	assert.equal(count("requests"), 1);
+	age(env.RETENTION_DAYS + 1);
+	await tick();
+	assert.equal(count("requests"), 0);
+	assert.equal(count("offers"), 0);
+});
+
 test("answers an unknown queue link with 404", async () => {
 	const response = await queueOf("https://intake.test/offers/00000000-0000-4000-8000-000000000000");
 	assert.equal(response.status, 404);
@@ -1658,6 +1771,12 @@ test("cancelling an approved drop-off deletes the booking and takes it out of th
 	assert.match(await (await offerPage(sam)).text(), /The customer cancelled this request/);
 	await press(sam, "done");
 	assert.deepEqual(finished(), { done: null, done_by: null });
+	// Nor a no-show once its time has come: they told us they weren't coming.
+	started();
+	mails = [];
+	await press(sam, "no-show");
+	assert.deepEqual(missed(), { no_show: null, no_show_by: null });
+	assert.equal(mails.length, 0);
 });
 
 test("an approve after the customer cancelled changes nothing", async () => {

@@ -6,10 +6,11 @@
 //                        every tech by email and tells the customer, then redirects back to the
 //                        site (the form works without JS)
 //   GET  /offers/<token> one tech's link to a request: shows it, with buttons to approve the drop-off
-//                        or decline it, and to mark the repair done once it's approved
+//                        or decline it, and to mark the repair done once it's approved, or a
+//                        no-show once its time has started
 //   POST /offers/<token> those buttons
 //   GET  /offers/<token>/queue  the repair queue every tech shares: each approved repair not marked
-//                        done, linked to that tech's own offers
+//                        done or a no-show, linked to that tech's own offers
 //   GET  /requests/<token>  the customer's link to their request: shows where it stands, with a
 //                        button to cancel the drop-off and a link to move it
 //   GET  /requests/<token>/times  the open times to move it to (?month=YYYY-MM for a later month)

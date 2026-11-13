@@ -79,7 +79,7 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
     only happens there. Deleting or dragging the event on your calendar doesn't change the request
     or tell anyone.
 - **The repair queue is shared.** The "Repair queue" link at the bottom of any of your request
-  pages shows every approved repair not marked done yet, same-day first, then by drop-off time, each
+  pages shows every approved repair not marked done or a no-show yet, same-day first, then by drop-off time, each
   with who approved it (the device comes to them), the customer's number and a link to its
   page. Every tech sees the same queue, and it's up to you which ones you can and want to do.
   Nothing in the queue says who's working on what, so tell the others when you pick one up. A
@@ -89,12 +89,18 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
   approved the drop-off, and one who declined it too. It leaves the queue for everyone, and its
   page shows who approved it and who finished it. Only the first press counts, and it can't be
   undone. Nothing is emailed, and the calendar event stays.
+- **No-show** on a repair's page when the customer didn't bring the device in. The button shows
+  once the drop-off time has started, until the repair is marked done. Any tech can press it. It
+  leaves the queue for everyone, and its page shows who approved the drop-off and who marked it a
+  no-show, not that it was finished. The customer is emailed that we missed them, with a link to
+  the form to pick another time, or they can reply. Only the first press counts, and it can't be
+  undone; a repair is either done or a no-show, never both. The calendar event stays.
 - **A same-day repair** says `SAME-DAY` in the email subjects, the calendar event's title, the
   queue and on the offer page, with the fee the customer was told (a range if they didn't pick a
   service), paid in person with the repair; nothing is charged online.
 - **The customer gets an email** when the request comes in, when a tech approves the drop-off,
-  when every tech declines or it expires, if it failed to go through, and when they cancel or
-  move it themselves.
+  when every tech declines or it expires, when it's marked a no-show, if it failed to go through,
+  and when they cancel or move it themselves.
 - If the emails fail to send, the customer still lands on "sent" when a hold was made, so check
   the calendar too: the hold has everything the email would have, including your link.
 - Times are offered from `LEAD_HOURS` hours ahead. The form's row of days shows the next
@@ -226,11 +232,12 @@ until the deploy finishes.
 
 Requests, with the customer's name, email, phone and what they wrote, are kept in D1 while
 they're in use. The hourly job deletes a request and its offers `RETENTION_DAYS` days after its
-drop-off time once it's settled: declined by every tech, expired, cancelled by the customer, or
-marked done. A repair that's approved but not marked done stays until it is, so it never drops out
-of the queue. One with a calendar hold the job hasn't managed to delete yet stays until the hold is
-gone. Events a cancel or a move couldn't delete at the time are kept apart (`stray_events`, just
-calendar and event IDs), so they don't hold up the request; the hourly job deletes them. The emails and
+drop-off time once it's settled: declined by every tech, expired, cancelled by the customer,
+marked done, or marked a no-show. A repair that's approved but not marked either stays until it
+is, so it never drops out of the queue. One with a calendar hold the job hasn't managed to delete
+yet stays until the hold is gone. Events a cancel or a move couldn't delete at the time are kept
+apart (`stray_events`, just calendar and event IDs), so they don't hold up the request; the hourly
+job deletes them. The emails and
 calendar events about it aren't touched. `RETENTION_DAYS` is in `wrangler.jsonc`; change it
 there, then `npm run types` and deploy.
 
