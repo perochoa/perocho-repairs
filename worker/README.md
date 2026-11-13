@@ -48,10 +48,12 @@ Messenger, email and Facebook Marketplace stay as they are. The form is one more
   not that you'll do the repair.
   - **Approve drop-off:** the first tech to press it gets the drop-off. Your hold turns into a
     green `Repair: ...` booking (or one is created if you didn't have a hold), everyone else's
-    hold is deleted, and the customer and the other techs are emailed. The repair then goes in
-    the repair queue, for any tech to pick up. Anyone who presses it after you sees that you
-    approved it. You can approve a drop-off when you're busy (and move what was there), and as
-    many as you like at the same time.
+    hold is deleted, and the customer and the other techs are emailed. The customer's email gives
+    them the drop-off address (`DROPOFF_ADDRESS`, the same for every tech), and so do the other
+    techs' email, the booking's description and the request's page, so you can all see what they
+    were told. The repair then goes in the repair queue, for any tech to pick up. Anyone who
+    presses it after you sees that you approved it. You can approve a drop-off when you're busy
+    (and move what was there), and as many as you like at the same time.
   - **Decline:** takes only you out of the drop-off; your hold is deleted and the others can
     still approve it. You can change your mind and approve it while it's open. Once every tech
     has declined, the customer is told nobody can take it. Declining the drop-off isn't
@@ -104,6 +106,7 @@ All free tiers. Do these once.
    npx wrangler secret put GOOGLE_SERVICE_ACCOUNT   # paste the JSON key
    npx wrangler secret put FASTMAIL_TOKEN
    npx wrangler secret put TECHS                    # see below
+   npx wrangler secret put DROPOFF_ADDRESS          # where devices are dropped off, on one line
    npx wrangler d1 create perocho-intake            # put the database_id it prints in wrangler.jsonc
    npx wrangler d1 migrations apply DB --remote
    npx wrangler deploy
@@ -123,6 +126,11 @@ All free tiers. Do these once.
      }
    ]
    ```
+
+   `DROPOFF_ADDRESS` is the one address every tech takes in devices at, as the customer's
+   confirmation gives it (e.g. `1 Example St, Mississauga, ON`). It's a secret for the same
+   reason. To change it, run `npx wrangler secret put DROPOFF_ADDRESS` again; no deploy needed,
+   and confirmations sent from then on give the new one.
 
 5. **Turn the form on:** set `intakeUrl` in `src/site.ts` to the URL `wrangler deploy` printed
    (no trailing slash) and merge that change. Until then the site hides every link to the form.

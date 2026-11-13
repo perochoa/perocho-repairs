@@ -28,6 +28,7 @@ The form needs the intake worker running beside the dev server.
    TECHS=[{"name":"...","calendarId":"...","email":"..."}]
    GOOGLE_SERVICE_ACCOUNT={"client_email":"...","private_key":"..."}
    FASTMAIL_TOKEN=
+   DROPOFF_ADDRESS=1 Example St, Mississauga, ON
    ```
 
 2. Start the worker on <http://localhost:8787>, with a local database:
