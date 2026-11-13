@@ -10,38 +10,25 @@
 //   POST /offers/<token> those buttons
 //   GET  /offers/<token>/queue  the repair queue every tech shares: each approved repair not marked
 //                        done, linked to that tech's own offers
+//   GET  /requests/<token>  the customer's link to their request: shows where it stands, with a
+//                        button to cancel the drop-off and a link to move it
+//   GET  /requests/<token>/times  the open times to move it to (?month=YYYY-MM for a later month)
+//   POST /requests/<token>  those buttons: cancel, or move to the time picked
 // and hourly (the cron in wrangler.jsonc) expires the requests nobody approved in time, deletes
-// stray holds, and deletes settled requests past RETENTION_DAYS.
+// stray holds and events, and deletes settled requests past RETENTION_DAYS.
 
+import { findSlots, hold } from "./calendar.ts";
+import * as customer from "./customer.ts";
 import { sendMail } from "./fastmail.ts";
-import { accessToken, createEvent, deleteEvent, listEvents } from "./google.ts";
+import { accessToken, deleteEvent } from "./google.ts";
 import { formatTime, type Intake, parseIntake } from "./intake.ts";
 import * as notices from "./notices.ts";
 import { act, expire, page, queue } from "./offers.ts";
 import type { Outcome } from "./outcomes.ts";
-import { horizon, monthWindow, openSlots, rowEnd, type Slot, slotOptions } from "./slots.ts";
+import { horizon, monthWindow, rowEnd } from "./slots.ts";
 import { parseTechs, type Tech } from "./techs.ts";
 
 // Env comes from worker-configuration.d.ts (`npm run types` after changing wrangler.jsonc).
-
-// The open times from now (or `from`, if later) until `to`. The calendars are only read for that
-// span, so a narrow one is cheap.
-async function findSlots(env: Env, token: string, techs: Tech[], from: number, to: number): Promise<Slot[]> {
-	const options = slotOptions(env, Date.now(), to);
-	// A calendar that can't be read (unshared, a wrong calendarId in TECHS, or too many events to
-	// read in one page) costs that tech their times, not everyone's. The log names the tech and
-	// carries Google's reason, which says which; only when no calendar can be read is it an error.
-	const results = await Promise.allSettled(
-		techs.map((tech) => listEvents(token, tech.calendarId, Math.max(options.now, from), to)),
-	);
-	const events = results.map((result, i) => {
-		if (result.status === "fulfilled") return result.value;
-		console.error(`can't read ${techs[i].name}'s calendar; their times aren't offered. A 404 means check their calendarId in TECHS and that it's shared`, result.reason);
-		return [];
-	});
-	if (results.every((result) => result.status === "rejected")) throw new Error("no tech's calendar could be read");
-	return openSlots(events, options);
-}
 
 async function slots(env: Env, month: string | null, origin: string | null, ip: string | null): Promise<Response> {
 	// Each fetch costs a Google call per tech, so cap it per visitor. The form treats any non-OK
@@ -117,16 +104,6 @@ interface Offer {
 	holdId: string | null;
 }
 
-// A tentative hold on the tech's calendar. It's "free", so it never keeps anyone else from the time.
-const hold = (env: Env, token: string, offer: Offer, slot: Slot, intake: Intake, link: string) =>
-	createEvent(token, offer.tech.calendarId, {
-		summary: notices.holdSummary(intake),
-		description: notices.holdDescription(intake, formatTime(slot.start, env.TIME_ZONE), link),
-		start: slot.start,
-		end: slot.end,
-		timeZone: env.TIME_ZONE,
-	});
-
 // How long the same form sent again counts as the request already filed.
 const REPEAT_MS = 10 * 60_000;
 
@@ -151,7 +128,7 @@ async function file(env: Env, intake: Intake, origin: string): Promise<Outcome> 
 
 	// Every tech free then gets a hold, so they can all plan around it until one approves it.
 	const held = await Promise.allSettled(
-		slot.techs.map((i) => hold(env, token, offers[i], slot, intake, link(offers[i]))),
+		slot.techs.map((i) => hold(env, token, offers[i].tech.calendarId, slot, intake, link(offers[i]))),
 	);
 	held.forEach((result, i) => {
 		if (result.status === "fulfilled") offers[slot.techs[i]].holdId = result.value;
@@ -164,14 +141,16 @@ async function file(env: Env, intake: Intake, origin: string): Promise<Outcome> 
 
 	// The check above can't stop the same form sent twice at once, since both pass it before either
 	// is filed. So the insert checks again, atomically, and the offers only go in with their request.
+	// The customer's link is its own random token, like each tech's, not the request's id.
 	const id = crypto.randomUUID();
+	const customerToken = crypto.randomUUID();
 	const now = Date.now();
 	const db = env.DB;
 	const rows = [
 		db.prepare(
-			`INSERT INTO requests (id, created, intake, slot_start, slot_end, rush) SELECT ?1, ?2, ?3, ?4, ?5, ?6
+			`INSERT INTO requests (id, created, intake, slot_start, slot_end, rush, customer_token) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?8
 			WHERE NOT EXISTS (SELECT 1 FROM requests WHERE intake = ?3 AND created > ?7)`,
-		).bind(id, now, JSON.stringify(intake), slot.start, slot.end, intake.rush, now - REPEAT_MS),
+		).bind(id, now, JSON.stringify(intake), slot.start, slot.end, intake.rush, now - REPEAT_MS, customerToken),
 		...offers.map((offer, position) =>
 			db.prepare(
 				`INSERT INTO offers (token, request_id, position, name, email, calendar_id, hold_id)
@@ -217,7 +196,7 @@ async function file(env: Env, intake: Intake, origin: string): Promise<Outcome> 
 			[
 				...offered.map((tech) => notices.toTech(intake, time, tech)),
 				notices.record(intake, time, env.MAIL_TO, offered),
-				notices.received(intake, time),
+				notices.received(intake, time, `${origin}/requests/${customerToken}`),
 			].map((mail) => ({ from: env.MAIL_FROM, ...mail })),
 		);
 	} catch (error) {
@@ -231,10 +210,12 @@ async function file(env: Env, intake: Intake, origin: string): Promise<Outcome> 
 
 const OFFER = /^\/offers\/([0-9a-f-]{36})$/;
 const QUEUE = /^\/offers\/([0-9a-f-]{36})\/queue$/;
+const CUSTOMER = /^\/requests\/([0-9a-f-]{36})$/;
+const TIMES = /^\/requests\/([0-9a-f-]{36})\/times$/;
 
 export default {
 	async fetch(req: Request, env: Env): Promise<Response> {
-		const { pathname, searchParams } = new URL(req.url);
+		const { pathname, searchParams, origin } = new URL(req.url);
 		try {
 			if (req.method === "GET" && pathname === "/slots") {
 				const month = searchParams.get("month");
@@ -242,7 +223,7 @@ export default {
 			}
 			if (req.method === "POST" && pathname === "/request") {
 				const ip = req.headers.get("CF-Connecting-IP");
-				const outcome = await request(env, await req.formData(), ip, new URL(req.url).origin);
+				const outcome = await request(env, await req.formData(), ip, origin);
 				return Response.redirect(`${env.SITE_URL}/request/${outcome}/`, 303);
 			}
 			const offer = pathname.match(OFFER);
@@ -252,15 +233,27 @@ export default {
 			if (offer && req.method === "POST") {
 				// A body that isn't a form is a press of no button.
 				const form = await req.formData().catch(() => null);
-				await act(env, offer[1], String(form?.get("action") ?? ""));
+				const at = form?.get("at");
+				await act(env, offer[1], String(form?.get("action") ?? ""), origin, at ? Number(at) : null);
 				// Back to the page, which now shows where the request stands.
 				return Response.redirect(req.url, 303);
+			}
+			const theirs = pathname.match(CUSTOMER);
+			if (theirs && req.method === "GET") return await customer.page(env, theirs[1]);
+			const times = pathname.match(TIMES);
+			if (times && req.method === "GET") {
+				return await customer.times(env, times[1], searchParams, req.headers.get("CF-Connecting-IP"));
+			}
+			if (theirs && req.method === "POST") {
+				const form = await req.formData().catch(() => null);
+				const next = await customer.act(env, theirs[1], form, origin, req.headers.get("CF-Connecting-IP"));
+				return Response.redirect(`${origin}${next}`, 303);
 			}
 			return new Response("Not found", { status: 404 });
 		} catch (error) {
 			console.error(error);
 			if (pathname === "/request") return Response.redirect(`${env.SITE_URL}/request/failed/`, 303);
-			if (OFFER.test(pathname)) {
+			if (OFFER.test(pathname) || CUSTOMER.test(pathname)) {
 				return new Response("Something went wrong, so nothing changed. Go back and try again.", { status: 500 });
 			}
 			return new Response("Something went wrong", { status: 500 });

@@ -1,4 +1,5 @@
-// The HTML shell of the pages a tech's link opens: the request and the repair queue.
+// The HTML shell of the pages the links open: a tech's request and repair queue, and the
+// customer's request and its list of times.
 
 // The pages need nothing but their inline styles and forms that post back here. Customer text is
 // escaped too; this is in case something slips through, and keeps the pages out of frames.
@@ -36,6 +37,8 @@ export const html = (title: string, body: string, status = 200) =>
 	.queue .what { font-weight: 600; }
 	.queue .details { color: var(--muted); }
 	.call a { color: var(--accent); font-weight: 600; }
+	select { font: inherit; padding: 0.5rem; border-radius: 0.5rem; max-width: 100%; }
+	.note { color: var(--muted); font-size: 0.9rem; margin: 0.75rem 0 0; }
 </style>
 </head>
 <body>

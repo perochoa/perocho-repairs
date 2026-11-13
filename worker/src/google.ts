@@ -171,20 +171,23 @@ export async function createEvent(
 	return ((await response.json()) as Pick<GoogleEvent, "id">).id;
 }
 
-// Turns a hold into a booking with a new title and description, keeping its time. False when the
-// hold is gone (a tech deleted it by hand), so the caller can create the booking instead.
-export async function bookEvent(
-	token: string,
-	calendarId: string,
-	eventId: string,
-	event: Pick<NewEvent, "summary" | "description">,
-): Promise<boolean> {
+// Turns a hold into a booking with a new title and description. The time is set too, though a
+// hold is normally at it already: a customer may have moved the drop-off since, and whatever hold
+// becomes the booking must be at the time they were told. False when the hold is gone (a tech
+// deleted it by hand), so the caller can create the booking instead.
+export async function bookEvent(token: string, calendarId: string, eventId: string, event: NewEvent): Promise<boolean> {
 	const response = await fetch(
 		`${API}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?fields=id`,
 		{
 			method: "PATCH",
 			headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-			body: JSON.stringify({ ...event, ...look(true) }),
+			body: JSON.stringify({
+				summary: event.summary,
+				description: event.description,
+				start: { dateTime: new Date(event.start).toISOString(), timeZone: event.timeZone },
+				end: { dateTime: new Date(event.end).toISOString(), timeZone: event.timeZone },
+				...look(true),
+			}),
 		},
 	);
 	if (response.status === 404 || response.status === 410) return false;
