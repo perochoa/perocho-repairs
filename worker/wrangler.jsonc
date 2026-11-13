@@ -4,12 +4,13 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2026-10-01",
 	"observability": { "enabled": true },
-	// Set with `npx wrangler secret put <NAME>`; tech names and calendar IDs stay out of the public repo.
+	// Set with `npx wrangler secret put <NAME>`; tech names, calendar IDs and the address stay out of the public repo.
 	//   TECHS                   [{"name": "Richard", "calendarId": "richard@gmail.com", "email": "..."}, ...]
 	//   GOOGLE_SERVICE_ACCOUNT  the service account's JSON key
 	//   FASTMAIL_TOKEN          API token with Email and Email submission access
+	//   DROPOFF_ADDRESS         where every tech takes in devices, on one line, as the confirmation gives it
 	// Listing them here types them in worker-configuration.d.ts and makes deploy fail if one is unset.
-	"secrets": { "required": ["TECHS", "GOOGLE_SERVICE_ACCOUNT", "FASTMAIL_TOKEN"] },
+	"secrets": { "required": ["TECHS", "GOOGLE_SERVICE_ACCOUNT", "FASTMAIL_TOKEN", "DROPOFF_ADDRESS"] },
 	// Per visitor IP per minute (period is 10 or 60 seconds): valid form posts, and /slots fetches.
 	// Counted per Cloudflare location and approximate. namespace_id is any number unique in the account.
 	"ratelimits": [

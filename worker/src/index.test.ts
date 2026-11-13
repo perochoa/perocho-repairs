@@ -34,6 +34,7 @@ const env = {
 		private_key: privateKey.export({ type: "pkcs8", format: "pem" }),
 	}),
 	FASTMAIL_TOKEN: "fm-token",
+	DROPOFF_ADDRESS: "1 Example St, Mississauga",
 	get DB() {
 		return db as unknown as D1Database;
 	},
