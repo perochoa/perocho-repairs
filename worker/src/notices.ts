@@ -46,7 +46,7 @@ export const holdDescription = (intake: Intake, time: string, link: string) =>
 export const dropOff = (address: string) => `Drop-off address: ${address}`;
 
 export const bookedDescription = (intake: Intake, time: string, tech: string, address: string) =>
-	`${untagged(describe(intake, time))}\n\n${dropOff(address)}\n\nDrop-off approved by ${tech}. The repair is in the queue for any tech to pick up; whoever does agrees with them when it'll be ready. Delete this event to cancel, and let them know.`;
+	`${untagged(describe(intake, time))}\n\n${dropOff(address)}\n\nDrop-off approved by ${tech}. The repair is in the queue for any tech to pick up; whoever does agrees with them when it'll be ready. To cancel or move the drop-off, ask the customer to use the link in their emails; deleting this event doesn't cancel it.`;
 
 export const holdSummary = (intake: Intake) => `Request: ${rushed(intake)} (${intake.name})`;
 export const bookedSummary = (intake: Intake) => `Repair: ${rushed(intake)} (${intake.name})`;
@@ -74,8 +74,10 @@ const sameDay = (intake: Intake) =>
 		? [`You asked for same-day service, so your repair goes to the front of the queue. That's +${sameDayFee(intake)}${intake.rushFrom ? " depending on the device, which the tech will confirm" : ""}, paid in person with the repair.`]
 		: [];
 const yours = (intake: Intake, time: string) => ["", "Your request:", describe(intake, time)];
+// Their own link to the request. Null for requests filed before customers had one.
+const change = (link: string | null) => (link ? [`To cancel or change your drop-off time: ${link}`] : []);
 
-export const received = (intake: Intake, time: string): Message => ({
+export const received = (intake: Intake, time: string, link: string): Message => ({
 	to: intake.email,
 	subject: `We got your repair request: ${what(intake)}`,
 	text: [
@@ -84,6 +86,7 @@ export const received = (intake: Intake, time: string): Message => ({
 		`Thanks! We've passed your request on to our techs. We'll email you again when one of them confirms your drop-off for ${stop(time)} Nothing is booked until then.`,
 		...sameDay(intake),
 		"A tech may call you to talk through the price. Once you've dropped it off, they'll let you know when it's ready. Reply to this email if anything changes.",
+		...change(link),
 		...yours(intake, time),
 	].join("\n"),
 });
@@ -101,7 +104,13 @@ export const failed = (intake: Intake): Message => ({
 });
 
 // Any tech may do the repair, not only the one who approved the drop-off, so "we" say when it's ready.
-export const confirmed = (intake: Intake, time: string, tech: string, address: string): Message => ({
+export const confirmed = (
+	intake: Intake,
+	time: string,
+	tech: string,
+	address: string,
+	link: string | null,
+): Message => ({
 	to: intake.email,
 	subject: `Your repair is confirmed: ${what(intake)}, ${time}`,
 	text: [
@@ -111,6 +120,7 @@ export const confirmed = (intake: Intake, time: string, tech: string, address: s
 		dropOff(address),
 		...sameDay(intake),
 		"Reply to this email if you need to change anything.",
+		...change(link),
 		...yours(intake, time),
 	].join("\n"),
 });
@@ -150,3 +160,61 @@ export const nobody = (intake: Intake, time: string, to: string): Message =>
 
 export const unclaimed = (intake: Intake, time: string, to: string): Message =>
 	closed(intake, time, to, "Nobody approved", "Nobody approved the drop-off in time, so it's closed");
+
+// The customer cancelled from their link. Everyone it was offered to hears, since an open request
+// waits on every tech and an approved one is in every tech's queue.
+export const withdrawn = (intake: Intake, time: string, to: string): Message => ({
+	to,
+	subject: `Cancelled by the customer: ${about(intake, time)}`,
+	text: `The customer cancelled their drop-off, so any hold or booking for it comes off your calendar, and it's out of the queue.\n\n${describe(intake, time)}`,
+});
+
+// They pressed it themselves, but an email is the record they keep, and a way to reply.
+export const cancelled = (intake: Intake, time: string): Message => ({
+	to: intake.email,
+	subject: `You cancelled your repair request: ${what(intake)}`,
+	text: [
+		hi(intake),
+		"",
+		`We've cancelled your drop-off for ${time} and let our techs know. Send the form again any time, or reply to this email.`,
+		...yours(intake, time),
+	].join("\n"),
+});
+
+// The customer moved their drop-off. `next` is what happens now, for whoever reads it: their own
+// link while it's open, or whose booking moved once it's approved.
+export const moved = (intake: Intake, from: string, time: string, to: string, next: string[]): Message => ({
+	to,
+	replyTo: intake.email,
+	subject: `Drop-off moved: ${about(intake, time)}`,
+	text: [`The customer moved their drop-off from ${from} to ${stop(time)}`, ...next, "", describe(intake, time)].join("\n"),
+});
+
+// A new time is a new question, so a tech who couldn't make the old one is asked again.
+export const movedOpen = (tech: Offered) => [
+	"It's open again for every tech, those who declined the old time too.",
+	`Approve the drop-off or decline it: ${tech.link}`,
+	...(tech.held ? ["It's on your calendar as a tentative hold until someone approves it."] : []),
+];
+
+// For repairs@, without the links.
+export const movedRecord = (techs: Offered[]) => {
+	const held = techs.filter((tech) => tech.held).map((tech) => tech.name);
+	return ["It's open again for every tech.", ...(held.length > 0 ? [`Held on: ${held.join(", ")} (tentative)`] : [])];
+};
+
+export const movedBooked = (tech: string) => [`It's still ${tech}'s drop-off, and the booking on their calendar moved with it.`];
+
+export const rescheduled = (intake: Intake, time: string, tech: string | null, link: string): Message => ({
+	to: intake.email,
+	subject: `Your drop-off is now ${time}: ${what(intake)}`,
+	text: [
+		hi(intake),
+		"",
+		tech
+			? `Your drop-off is now ${stop(time)} ${tech} will be there for it, so there's nothing more to confirm.`
+			: `Your drop-off is now ${stop(time)} We'll email you again when a tech confirms it. Nothing is booked until then.`,
+		...change(link),
+		...yours(intake, time),
+	].join("\n"),
+});
